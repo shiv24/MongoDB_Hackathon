@@ -102,7 +102,7 @@ $('session-user').addEventListener('change', async e => {
 });
 $('lesson-example').addEventListener('click', () => {
   if (!state.run?.brief) { toast('Create a prompt first, then add feedback.'); return; }
-  $('feedback-text').value = 'For all searchable tables in this project, show a full-width pale amber banner directly above the results whenever search is active. Include the current search term, matching result count, and a clearly labeled Clear search button in that banner.';
+  $('feedback-text').value = 'Use purple (#7C3AED) backgrounds and white text for all action buttons in this project, including Clear search and pagination. Keep the table background light and its text dark.';
   $('feedback-card').scrollIntoView({behavior:'smooth',block:'center'}); $('feedback-text').focus();
 });
 async function openRun(id) {
@@ -116,13 +116,13 @@ async function openRun(id) {
 // ---------- direct request and optional microphone ----------
 let recording = null;
 let microphone = null;
-async function submitRequest(clarification = '') {
+async function submitRequest(clarification = '', lessonIds = []) {
   if (!state.projectId) throw new Error('The default workspace is still loading. Try again in a moment.');
   const request = clarification && state.run ? state.run.request : $('type-input').value.trim();
   if (!request) throw new Error('Describe what you want built.');
   const answers = clarification ? (state.run?.clarification_text || '') + '\n' + clarification : '';
   progress('1 of 2 · Writing your prompt using project memory');
-  state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers}});
+  state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers, lesson_ids:lessonIds}});
   renderRun();
   history.replaceState(null, '', `#run=${state.run._id}`);
   await Promise.all([generatePreview(), loadContext()]);
@@ -203,6 +203,7 @@ $('compare-close').addEventListener('click', () => $('compare-dialog').close());
 $('compare-preview').addEventListener('click', () => {
   if (!state.baseline?.artifact || !state.run?.artifact) return;
   const before = state.baseline, after = state.run;
+  history.replaceState(null, '', `#run=${after._id}&before=${before._id}`);
   $('before-frame').srcdoc = before.artifact.html;
   $('after-frame').srcdoc = after.artifact.html;
   $('compare-meta').textContent = `${before.request === after.request ? 'Same request' : 'Different requests'} · Before: ${before.artifact.model} · After: ${after.artifact.model}`;
@@ -448,7 +449,7 @@ $('remember-rebuild').addEventListener('click', e => busy(e.currentTarget, 'Reme
     state.baseline = previous; sessionStorage.setItem(`pf-before-${state.me.user_id}`, previous._id);
     $('type-input').value = previous.request;
     toast('Guidance saved. Rebuilding the same request…');
-    await submitRequest();
+    await submitRequest('', [result.proposed._id]);
     if (state.run?.artifact) $('compare-preview').click();
   } catch (err) { $('feedback-error').textContent = (remembered ? 'Your guidance was saved, but rebuilding failed. ' : '') + err.message; show('feedback-error'); }
   finally { stopProgress(); $('send-btn').disabled = false; $('session-user').disabled = false; }

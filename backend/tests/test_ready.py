@@ -171,3 +171,30 @@ def test_grouped_citations_preserve_requirements():
     result = ground_direct_payload(draft, {'S1','D2'})
     assert result['requirements'] == ['Respect filters [S1] [D2]']
     assert not result['assumptions']
+
+
+def test_selected_feedback_included_without_search_hit(db):
+    from app.routes.build import include_selected_lessons
+    lesson = lessons.propose(ALICE, 'signup', 'Make buttons purple', 'r', 'f', [], None, [])
+    lessons.approve(ALICE, lesson['_id'], 'project')
+    entries = include_selected_lessons(ALICE, 'signup', [], [lesson['_id'], lesson['_id']])
+    assert len(entries) == 1
+    assert entries[0]['text'] == 'Make buttons purple'
+    assert entries[0]['selection'] == 'explicit_feedback'
+    assert include_selected_lessons(ALICE, 'signup', entries, [lesson['_id']]) == entries
+
+
+def test_selected_feedback_enforces_status_scope_and_expiry(db):
+    from app.routes.build import include_selected_lessons
+    lesson = lessons.propose(ALICE, 'signup', 'Make buttons purple', 'r', 'f', [], None, [])
+    with pytest.raises(Conflict):
+        include_selected_lessons(ALICE, 'signup', [], [lesson['_id']])
+    lessons.approve(ALICE, lesson['_id'], 'personal')
+    with pytest.raises(Conflict):
+        include_selected_lessons(BOB, 'signup', [], [lesson['_id']])
+    db.lessons.update_one({'_id':lesson['_id']}, {'$set':{'scope':'project'}})
+    with pytest.raises(Conflict):
+        include_selected_lessons(ALICE, 'billing', [], [lesson['_id']])
+    db.lessons.update_one({'_id':lesson['_id']}, {'$set':{'expires_at':now()-timedelta(days=1)}})
+    with pytest.raises(Conflict):
+        include_selected_lessons(ALICE, 'signup', [], [lesson['_id']])
