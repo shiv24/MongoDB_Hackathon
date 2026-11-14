@@ -31,7 +31,7 @@
       </section>
 
       <section class="card hidden" id="brief-card">
-        <div class="result-header"><div><div class="eyebrow">READY FOR YOUR AGENT</div><h2>Your prompt, with the full picture.</h2></div><div class="row"><button id="generate-btn" class="secondary" type="button">Preview website</button><button id="copy-btn" type="button">Copy prompt</button></div></div><p class="hint">Review and edit below. Copy into your preferred agent when ready.</p><div id="contributions" class="contributions"></div><details id="brief-details" open>
+        <div class="result-header"><div><div class="eyebrow">READY FOR YOUR AGENT</div><h2>Your prompt, with the full picture.</h2></div><div class="row"><button id="generate-btn" class="secondary" type="button">Preview website</button><button id="copy-btn" type="button">Copy prompt</button></div></div><p class="hint">Review and edit below. Copy into your preferred agent when ready.</p><div id="learning-status" class="learning-status" role="status"></div><div id="contributions" class="contributions"></div><details id="brief-details" open>
           <summary><strong>Your implementation prompt</strong> <span id="run-status" class="chip"></span> <span id="brief-rev" class="muted"></span></summary>
           <div id="stale" class="callout warn hidden"></div>
           <div id="brief"></div>
@@ -53,14 +53,10 @@
 
       <!-- 3. Feedback -->
       <section class="card hidden" id="feedback-card">
-        <h2>Make the next prompt better.</h2>
-        <p class="hint">What should your team never have to explain again? Add a note, then rate the result.</p>
-        <textarea id="feedback-text" rows="3" placeholder="What worked, or what should change?"></textarea>
-        <div class="feedback-actions" role="group" aria-label="Rate this prompt">
-          <button id="feedback-up" class="feedback-rating" type="button" aria-label="Thumbs up" aria-pressed="false"><span aria-hidden="true">👍</span><span>Looks good</span></button>
-          <button id="feedback-down" class="feedback-rating" type="button" aria-label="Thumbs down" aria-pressed="false"><span aria-hidden="true">👎</span><span>Needs work</span></button>
-          <span id="feedback-status" class="muted" role="status"></span>
-        </div>
+        <h2>Teach the brain for next time.</h2>
+        <p class="hint">1. Describe reusable guidance. 2. Review and approve the lesson. 3. Create a new prompt. Your current prompt stays unchanged.</p>
+        <textarea id="feedback-text" rows="3" placeholder="For future exports, always include a manifest with the filters and row count."></textarea>
+        <div class="feedback-actions"><button id="suggest-lesson" type="button">Suggest a lesson</button><span id="feedback-status" class="muted" role="status"></span></div>
         <div id="feedback-lesson"></div>
       </section>
     </main>

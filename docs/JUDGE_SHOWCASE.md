@@ -3,7 +3,7 @@
 Keep the showcase under two minutes. Use the labeled demo identity selector; it is simulated identity, not production authentication.
 
 1. **Alice / 20 seconds:** click “Use an example request”, then Create prompt. Explain: “This starts from our project’s documents and decisions.”
-2. **Learn / 25 seconds:** click “Use example feedback”, then Needs work. Review the suggested lesson. Select **This project** and Save lesson. Explain: “The useful correction becomes approved shared memory—not an invisible change to the model.”
+2. **Learn / 25 seconds:** click “Use example feedback”, then Suggest a lesson. Review the suggested lesson. Select **This project** and Approve for future prompts. Explain: “The useful correction becomes approved shared memory—not an invisible change to the model.”
 3. **Bob / 25 seconds:** switch to Bob. Click the example request: exporting invoices. Create prompt. Point to the manifest instruction and its lesson citation, which identifies Alice as approver. Explain: “Different teammate, fresh session, different feature. Bob never asked for a manifest.”
 4. **Inspect / 15 seconds:** open the shared brain. Show the lesson’s scope, approval and revision. Alice’s private prompt history does not appear in Bob’s session.
 

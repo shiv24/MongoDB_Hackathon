@@ -262,8 +262,6 @@ function renderRun() {
   if (hasBrief && state.feedbackRunId !== r._id) {
     state.feedbackRunId = r._id;
     $("feedback-text").value = "";
-    $("feedback-up").setAttribute("aria-pressed", "false");
-    $("feedback-down").setAttribute("aria-pressed", "false");
     $("feedback-status").textContent = "";
     $("feedback-lesson").replaceChildren();
   }
@@ -286,6 +284,12 @@ function renderRun() {
   }
 
   const b = r.brief;
+  const cited = usedIds();
+  const learned = (r.provenance || []).filter(e => e.type === 'lesson' && cited.has(e.id));
+  $('learning-status').replaceChildren(
+    el('strong', {}, learned.length ? `Learned guidance used · ${learned.length} ${learned.length === 1 ? 'lesson' : 'lessons'}` : 'No learned lessons used in this prompt'),
+    ...learned.map(e => el('p', {}, `${e.text} — approved by ${e.approved_by || e.owner_id}, ${e.scope} scope`)),
+    !learned.length ? el('p', {class:'hint'}, 'This prompt may use documents and decisions. Approved lessons appear here only when selected and cited for the request.') : null);
   const contributions = [];
   const provenance = Object.fromEntries((r.provenance || []).map(e => [e.key, e]));
   for (const section of ['preferences', 'current_decisions', 'requirements']) {
@@ -345,21 +349,16 @@ $("export-btn").addEventListener("click", (e) => busy(e.target, "Rechecking memo
 }));
 
 // ---------- simple artifact feedback ----------
-async function submitFeedback(rating) {
-  const comment = $("feedback-text").value.trim();
-  const label = rating === "up" ? "Thumbs up" : "Thumbs down";
-  const text = comment ? `${label}: ${comment}` : label;
+async function submitFeedback() {
+  const text = $('feedback-text').value.trim();
+  if (!text) throw new Error('Describe what the brain should remember first.');
   const result = await api(`/runs/${state.run._id}/feedback`, {
-    method: "POST", body: { text, propose_lesson: Boolean(comment) },
+    method:'POST', body:{text, propose_lesson:true}
   });
-  $("feedback-up").setAttribute("aria-pressed", String(rating === "up"));
-  $("feedback-down").setAttribute("aria-pressed", String(rating === "down"));
-  $("feedback-status").textContent = "Thanks for the feedback.";
+  $('feedback-status').textContent = result.proposed ? 'Suggested only — review and approve below.' : 'Feedback saved. No reusable lesson was identified. Try describing a rule for future tasks.';
   renderFeedbackLesson(result);
 }
-
-$("feedback-up").addEventListener("click", (e) => busy(e.currentTarget, "Saving…", () => submitFeedback("up")));
-$("feedback-down").addEventListener("click", (e) => busy(e.currentTarget, "Saving…", () => submitFeedback("down")));
+$('suggest-lesson').addEventListener('click', e => busy(e.currentTarget, 'Preparing lesson…', submitFeedback));
 
 function renderFeedbackLesson(result) {
   const box = $("feedback-lesson");
@@ -373,8 +372,8 @@ function renderFeedbackLesson(result) {
   text.value = lesson.text;
   box.append(el("div", { class: "generated-lesson" },
     el("strong", {}, "Suggested lesson"),
-    el("p", { class: "hint" }, "Generated from your feedback. Review it before saving."),
-    text, scopePicker,
+    el("p", { class: "hint" }, "Not active yet. Review the wording and choose who should benefit."),
+    text, el("label", {class:"hint"}, "Who should use this in future prompts?"), scopePicker,
     el("div", { class: "row" },
       el("button", { class: "secondary", onclick: (event) => busy(event.currentTarget, "Dismissing…", async () => {
         await api(`/lessons/${lesson._id}/reject`, { method: "POST" });
@@ -385,10 +384,14 @@ function renderFeedbackLesson(result) {
       el("button", { onclick: (event) => busy(event.currentTarget, "Saving…", async () => {
         const scope = scopePicker.value;
         await api(`/lessons/${lesson._id}/approve`, { method: "POST", body: { scope, text: text.value.trim() } });
-        box.replaceChildren();
+        box.replaceChildren(el('div', {class:'lesson-success'},
+          el('strong', {}, 'Approved for future relevant prompts'),
+          el('p', {}, text.value.trim()),
+          el('p', {class:'hint'}, 'This does not rewrite the current prompt. Create a new request; when this lesson is relevant, its citation will appear under “Learned guidance used”. Newly saved lessons may need a moment to become searchable.'),
+          el('button', {class:'secondary',type:'button',onclick:() => { $('request-card').scrollIntoView({behavior:'smooth',block:'center'}); $('type-input').focus(); }}, 'Create the next prompt')));
         $("feedback-status").textContent = ({project:"Lesson saved for this project.",team:"Lesson saved for your team.",personal:"Lesson saved for you."})[scope];
         await loadContext();
-      }) }, "Save lesson"))));
+      }) }, "Approve for future prompts"))));
 }
 window.addEventListener('hashchange', () => { const match = location.hash.match(/^#run=([a-f0-9]+)$/); if (state.me && match && match[1] !== state.run?._id) openRun(match[1]).catch(e => toast(e.message)); });
 init().catch((e) => {
