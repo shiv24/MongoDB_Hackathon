@@ -11,11 +11,11 @@ Hackathon project for Memory You Can Govern (Toronto, Nov 14, 2026; submissions 
 - The only TTL index is on `lessons.purge_at`. Expiry is logged by the app sweep first.
 - API keys (Anthropic, Voyage, ElevenLabs) stay on the server. Audio is not stored.
 - Any generated HTML renders only in `<iframe sandbox="">`.
-- No Streamlit, and the main screen is not a dashboard. No frontend exists yet.
+- No Streamlit, and the main screen is not a dashboard. The frontend (`frontend/`) is plain HTML/JS served by FastAPI at `/`; the API is under `/api`. Insert server text with `textContent`, never `innerHTML`.
 
 ## Commands
-- Run (API only): `uvicorn app.main:app --reload --app-dir backend`
-- Test: `pytest backend/tests`
+- Run: `uvicorn app.main:app --reload --app-dir backend` (app at http://localhost:8000)
+- Test: `pytest backend/tests` (offline; the live Atlas tests in `test_isolation.py` run when `.env` is set and fixtures are seeded)
 - Atlas setup: `python scripts/setup_atlas.py`, then `python scripts/seed.py --reset`
 
 ## Skills

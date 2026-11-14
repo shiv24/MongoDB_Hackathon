@@ -18,7 +18,8 @@ Database: `promptforge` (from `MONGODB_DB`). Everything lives in the **hackathon
    - `lessons.{team_id, expires_at}` for the expiry sweep, plus the regular indexes listed in DESIGN.md
    - a JSON Schema validator on `memory_events`
 3. Vector Search indexes build asynchronously. Wait for `READY` before querying.
-4. Seed with `python scripts/seed.py --reset`, which loads team_a and team_b fixtures.
+4. Seed with `python scripts/seed.py --reset` (fixtures in `scripts/data/fixtures.json`; embeds with Voyage).
+5. Verify with `pytest backend/tests/test_isolation.py`, which runs live `$vectorSearch` checks for isolation and exclusion of proposed, expired, retired, superseded and personal memory.
 
 ## Gotchas
 - Every field used in a `$vectorSearch` filter must be declared as a `filter` field in that index, or the query errors. `repo/scope.py` filters on `team_id`, `status`, `scope`, `project_id`, `owner_id`.

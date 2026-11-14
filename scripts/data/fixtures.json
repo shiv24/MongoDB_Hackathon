@@ -1,0 +1,60 @@
+{
+  "users": [
+    {"_id": "alice", "name": "Alice (Lumen, publisher)", "team_id": "team_a", "project_ids": ["lumen-signup", "lumen-billing"], "role": "publisher"},
+    {"_id": "bob", "name": "Bob (Lumen, member)", "team_id": "team_a", "project_ids": ["lumen-signup"], "role": "member"},
+    {"_id": "carol", "name": "Carol (Orbit, admin)", "team_id": "team_b", "project_ids": ["orbit-signup"], "role": "admin"}
+  ],
+  "projects": [
+    {"_id": "lumen-signup", "team_id": "team_a", "name": "Lumen web app: account signup"},
+    {"_id": "lumen-billing", "team_id": "team_a", "name": "Lumen web app: billing"},
+    {"_id": "orbit-signup", "team_id": "team_b", "name": "Orbit: account signup"}
+  ],
+  "sources": [
+    {"source_id": "lumen-signup-spec", "team_id": "team_a", "project_id": "lumen-signup", "added_by": "alice", "kind": "spec",
+     "title": "Signup page spec (v2)",
+     "text": "Purpose: let a new user create a Lumen account and their first workspace in one step.\n\nRequired fields: work email, full name, password, workspace name. Company size is required by sales, but the allowed values are still TBD pending input from the sales team.\n\nPassword rules: at least 12 characters, and at least one number. Show the rules before the user starts typing, not only after an error.\n\nThe user must tick a checkbox agreeing to the Terms of Service and Privacy Policy before the primary action is enabled.\n\nErrors are shown inline under the field that caused them, in plain language. Do not clear the form on error.\n\nOn success the user lands on the onboarding checklist. Accessibility: every input has a visible label; the page is usable with keyboard only; color contrast meets WCAG AA."},
+    {"source_id": "lumen-login-spec", "team_id": "team_a", "project_id": "lumen-signup", "added_by": "alice", "kind": "spec",
+     "title": "Login page spec",
+     "text": "Purpose: returning users sign in with work email and password.\n\nFields: work email, password, a 'Keep me signed in' checkbox. Link to password reset and to the signup page.\n\nAfter five failed attempts show a message that the account is temporarily locked for 15 minutes."},
+    {"source_id": "lumen-architecture", "team_id": "team_a", "project_id": "lumen-signup", "added_by": "bob", "kind": "repo-notes",
+     "title": "Architecture notes (repo snapshot)",
+     "text": "Identity: all account creation goes through the existing Lumen ID service. The web client calls POST /v1/identities with email, name, password and workspace_name; the service returns 201 with an identity id, or 409 if the email already exists. The web app never stores passwords.\n\nFrontend conventions: components live in web/src/components; form components are built on the shared FormField component (web/src/components/FormField.tsx), which renders a label, input, help text and an inline error slot.\n\nThere is no endpoint yet for company size options."},
+    {"source_id": "lumen-brand", "team_id": "team_a", "project_id": "lumen-signup", "added_by": "alice", "kind": "guide",
+     "title": "Lumen brand guide",
+     "text": "Colors: primary #3B5BDB (indigo), surface #FFFFFF, text #1F2937, error #C92A2A. Font: system UI stack.\n\nTone: friendly and direct. Avoid exclamation marks.\n\nCorners are 8px rounded; primary buttons are full-width on forms."},
+    {"source_id": "lumen-billing-spec", "team_id": "team_a", "project_id": "lumen-billing", "added_by": "alice", "kind": "spec",
+     "title": "Billing page spec",
+     "text": "Show the current plan, seat count and next invoice date. Admins can change plan; members see read-only details."},
+    {"source_id": "orbit-signup-spec", "team_id": "team_b", "project_id": "orbit-signup", "added_by": "carol", "kind": "spec",
+     "title": "Orbit signup spec",
+     "text": "Orbit accounts are passwordless. The signup page asks only for an email address and sends a magic link via Orbit Auth. Headline: 'Launch your orbit'. Dark theme, accent color #F59F00."}
+  ],
+  "decisions": [
+    {"_id": "dec-a-identity", "team_id": "team_a", "project_id": "lumen-signup", "owner_id": "alice", "revision": 1, "supersedes": null, "status": "current",
+     "text": "Signup uses the existing Lumen ID identity service (POST /v1/identities). Do not build custom auth or store passwords in the web app."},
+    {"_id": "dec-a-labels", "team_id": "team_a", "project_id": "lumen-signup", "owner_id": "alice", "revision": 1, "supersedes": null, "status": "current",
+     "text": "Primary button labels are sentence case and at most three words, e.g. 'Create account'."},
+    {"_id": "dec-a-phone-r1", "team_id": "team_a", "project_id": "lumen-signup", "owner_id": "bob", "revision": 1, "supersedes": null, "status": "superseded", "superseded_by": "dec-a-phone-r2",
+     "text": "Signup collects a mobile phone number for two-factor setup."},
+    {"_id": "dec-a-phone-r2", "team_id": "team_a", "project_id": "lumen-signup", "owner_id": "alice", "revision": 2, "supersedes": "dec-a-phone-r1", "status": "current",
+     "text": "Do not collect a phone number at signup (privacy review, Oct 2026). Two-factor setup happens later in onboarding."},
+    {"_id": "dec-b-auth", "team_id": "team_b", "project_id": "orbit-signup", "owner_id": "carol", "revision": 1, "supersedes": null, "status": "current",
+     "text": "Orbit signup is passwordless: email magic link via Orbit Auth only."}
+  ],
+  "lessons": [
+    {"_id": "les-a-pwhint", "team_id": "team_a", "project_id": "lumen-signup", "owner_id": "alice", "scope": "project", "status": "approved",
+     "text": "Show password requirements as a checklist under the password field that updates as the user types.", "task_tags": ["forms", "signup"]},
+    {"_id": "les-a-singlecol", "team_id": "team_a", "project_id": "lumen-signup", "owner_id": "alice", "scope": "personal", "status": "approved",
+     "text": "Use a single-column form layout with the form centered in a card no wider than 440px.", "task_tags": ["forms"]},
+    {"_id": "les-a-teamtone", "team_id": "team_a", "project_id": "lumen-signup", "owner_id": "alice", "scope": "team", "status": "approved",
+     "text": "Write helper and error text in second person, one short sentence each.", "task_tags": ["copy"]},
+    {"_id": "les-a-darkmode", "team_id": "team_a", "project_id": "lumen-signup", "owner_id": "bob", "scope": "personal", "status": "proposed",
+     "text": "Add a dark mode toggle in the top right corner of every page.", "task_tags": ["ui"]},
+    {"_id": "les-a-stale", "team_id": "team_a", "project_id": "lumen-signup", "owner_id": "alice", "scope": "project", "status": "approved", "expires_in_days": -1,
+     "text": "Put a large hero illustration of the product above every form.", "task_tags": ["ui"]},
+    {"_id": "les-a-twocol", "team_id": "team_a", "project_id": "lumen-signup", "owner_id": "alice", "scope": "project", "status": "retired",
+     "text": "Use a two-column layout with marketing copy on the left.", "task_tags": ["ui"]},
+    {"_id": "les-b-caps", "team_id": "team_b", "project_id": "orbit-signup", "owner_id": "carol", "scope": "team", "status": "approved",
+     "text": "Use bold UPPERCASE labels on all buttons.", "task_tags": ["ui"]}
+  ]
+}

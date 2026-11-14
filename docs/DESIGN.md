@@ -40,34 +40,46 @@ One Atlas database, `promptforge`. Every record carries `team_id`; project-level
 | Approval | `proposed` lessons are never retrieved. `repo.lessons.approve` checks the caller may publish at the chosen scope (team scope needs `publisher` or `admin`) |
 | Attribution | `owner_id`, `approved_by`, `evidence_run_id`, `revision` on lessons; `owner_id`, `revision` on decisions; `provenance` on runs |
 | Correction | New revision with `supersedes`; old one set to `superseded`. Only `current` decisions and `approved` lessons are retrieved |
-| Expiry | `repo.lessons.expire_due` runs before every lesson read: sets `expired` and logs it. TTL on `purge_at` (= `expires_at` + 7 days) deletes later |
+| Expiry | `repo.lessons.expire_due` runs before every lesson read: sets `expired` and logs it. TTL on `purge_at` (= `expires_at` + 7 days) deletes later. Citing a lesson in an executed run pushes both forward |
+| Index lag | Atlas Search indexes sync asynchronously, so vector hits for lessons and decisions are re-checked against the collection before use |
 | Forgetting | Lesson removed from future use; runs citing it marked `stale`; event logged without the text. Not a complete erasure (README) |
 | Run evidence | `runs.provenance`, `runs.model`, `runs.checks`. `execute` rechecks provenance revisions first and returns the change if any moved |
 
 ## API
 
+All endpoints are under `/api`; the frontend is served at `/`.
+
 | Method | Path | Does |
 |---|---|---|
-| POST | `/login` | Pick a demo user → session `{user_id, team_id, project_ids, role}` |
-| POST | `/transcribe` | Audio → ElevenLabs STT → `{text}` (key stays server-side, audio not stored) |
+| GET | `/users` | Demo login picker (names and teams only) |
+| POST | `/login` | `{user_id}` → session `{user_id, team_id, project_ids, role}` loaded from the database |
+| GET | `/me` · POST `/logout` | Session |
+| POST | `/transcribe` | Audio → ElevenLabs STT → `{text}` (key stays server-side, audio not stored, 10 MB cap) |
 | GET | `/projects` | Caller's projects |
-| GET | `/projects/{id}/context` | Sources, current decisions, visible approved lessons with owner, scope, revision |
-| POST | `/projects/{id}/sources` | Add a spec or repo snapshot (chunked + embedded) |
+| GET | `/projects/{id}/context` | Sources, decisions (incl. superseded), visible lessons, recent runs |
+| POST | `/projects/{id}/sources` | `{title, text, kind}`; same title → new revision (chunked + embedded) |
 | POST | `/projects/{id}/decisions` | Add a team decision |
 | POST | `/projects/decisions/{id}/supersede` | Correct a decision with a new revision |
-| POST | `/runs` | `{project_id, request}` → brief, or a clarifying question |
+| GET | `/projects/decisions/{id}/history` | Its memory events |
+| POST | `/runs` | `{project_id, request}` → brief, or `needs_clarification` with one question |
+| POST | `/runs/{id}/clarify` | `{answer}` → brief |
 | GET | `/runs/{id}` | Run with brief, provenance, artifact, checks |
-| PATCH | `/runs/{id}/brief` | Edit brief / answer open questions |
-| GET | `/runs/{id}/export` | Markdown brief with citations |
-| POST | `/runs/{id}/execute` | Recheck → model → artifact + checks |
-| POST | `/runs/{id}/feedback` | Feedback → proposed lesson |
+| POST | `/runs/{id}/answers` | `{answers: [{index, answer}]}` → brief rebuilt with the answers |
+| PATCH | `/runs/{id}/brief` | `{brief}` user edits (citations re-validated) |
+| POST | `/runs/{id}/refresh` | Re-retrieve current context and rebuild (after a stale recheck) |
+| GET | `/runs/{id}/export` | Markdown brief with citations and provenance |
+| POST | `/runs/{id}/execute` | Recheck (409 + changes if stale) → generate → checks |
+| POST | `/runs/{id}/feedback` | `{text}` → proposed lesson (or "not reusable") |
 | GET | `/lessons?project_id=&status=` | Lessons visible to caller |
 | POST | `/lessons/{id}/approve` | `{scope, text?}` |
 | POST | `/lessons/{id}/reject` · `/correct` · `/retire` | Lifecycle changes, each logged |
 | DELETE | `/lessons/{id}` | Forget |
+| GET | `/lessons/{id}/history` | Its memory events |
+
+Errors: 401 not logged in, 403 scope/permission, 404 not found or not visible, 409 stale context or blocking questions, 400 invalid input.
 
 ## Open decisions
 
-- **Demo task and artifact type.** Website generation is the leading candidate. If chosen, generated HTML renders in `<iframe sandbox="">` with no scripts.
-- **Frontend.** Not built yet. Must follow the README experience (request → context → brief → result → feedback); no Streamlit, not a dashboard.
+- **Demo task and artifact type.** Implemented for HTML pages (the leading candidate): generated HTML is sanitized server-side and renders in `<iframe sandbox="">`. The fixtures target a signup page.
+- **Frontend.** `frontend/` follows the README experience (request → brief with context → result → feedback) with project context in a sidebar; no Streamlit, not a dashboard.
 - **Insert-only role on the sandbox tier.** Verify custom roles are available; otherwise rely on code + JSON Schema and say so.

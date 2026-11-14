@@ -175,7 +175,7 @@ flowchart TD
     P --> H
 ```
 
-The existing scaffold uses **FastAPI**, **MongoDB Atlas**, and placeholders for **Anthropic Claude**, **Voyage AI embeddings**, and **ElevenLabs speech-to-text**. Provider adapters and the execution flow still need implementation. Secrets stay on the server. Any generated HTML must render in a sandboxed iframe without scripts.
+The prototype uses **FastAPI**, a plain HTML/JavaScript frontend, **MongoDB Atlas** (collections, Vector Search, TTL), **Anthropic Claude** (`claude-opus-5-5` by default) for intent, brief assembly, generation, review and lesson proposals, **Voyage AI** embeddings, and **ElevenLabs** speech-to-text. Secrets stay on the server. Generated HTML renders in a sandboxed iframe without scripts.
 
 ### Planned records
 
@@ -188,34 +188,40 @@ The existing scaffold uses **FastAPI**, **MongoDB Atlas**, and placeholders for 
 | Feedback | Preserve the user's observation and any lesson it proposed |
 | Memory events | Explain approvals, corrections, scope changes, retirement, and forgetting without retaining content that must be erased |
 
-The scaffold's collections are `users`, `projects`, `sources`, `decisions`, `lessons`, `runs`, `feedback` and `memory_events`. See [docs/DESIGN.md](docs/DESIGN.md#data-model).
+The collections are `users`, `projects`, `sources`, `decisions`, `lessons`, `runs`, `feedback` and `memory_events`. See [docs/DESIGN.md](docs/DESIGN.md#data-model).
 
 ## Implementation status
 
-**Product specification ready; end-to-end functionality pending.** The current source contains:
+**First complete workflow implemented and tested offline; not yet verified against the Atlas Sandbox or live models.** Run the steps under [Local development](#local-development) to verify.
 
 | Area | Current state |
 | --- | --- |
-| Backend | FastAPI app, configuration, session middleware, and route stubs for projects, runs, lessons and voice |
-| Pipeline | Stubs for intent, retrieval, cited brief, execution, validation and learning (`backend/app/agent/`) |
-| Memory and access | Working session-derived scope filters (`repo/scope.py`); stubs for lessons, sources, decisions, runs and the event writer |
-| Voice | A transcription-client stub and route; no working transcription flow |
-| Frontend | None yet. The earlier build-and-vote shells were removed; the UI for the experience above is still to be built |
-| Atlas setup | Setup and seed script placeholders; empty team_a and team_b fixture files |
-| Tests | Scope-filter unit tests; a skipped Atlas isolation test |
+| Request | Typed or spoken (ElevenLabs via `/api/transcribe`); one clarifying question when two documents or features fit |
+| Context | Scoped `$vectorSearch` over source chunks, current decisions and approved lessons; results re-checked against the collections because search indexes sync asynchronously |
+| Brief | Cited sections (requirements, decisions, implementation context, preferences, acceptance checks, open questions, assumptions); unknown citations dropped, uncited items flagged; editable; blocking questions must be answered before running |
+| Export | Markdown with citations and a provenance list of source and memory revisions |
+| Execution | Cited memory rechecked first; if anything changed, the run is marked stale and the change is shown. One adapter: Claude generates one self-contained HTML page, sanitized server-side and rendered in `<iframe sandbox="">` |
+| Validation | Static checks (parses, no scripts, viewport meta) plus a model review of each acceptance check; every result is labelled with how it was checked, and failed or unrun checks stay visible |
+| Learning | Feedback becomes a proposed lesson with evidence, duplicate and conflict hints; the user approves it as personal, project or team (team needs publisher/admin) |
+| Governance | Correction by revision and supersession; retire; forget (removes from use, marks citing runs stale, logs without text); expiry sweep before reads, TTL purge 7 days later; append-only `memory_events` with a JSON Schema validator |
+| Fixtures | `scripts/data/fixtures.json`: one Lumen signup project covering every lifecycle state, a second Lumen project for membership checks, and an Orbit team for isolation |
+| Tests | 21 offline tests (scope filters, lifecycle on an in-memory database, brief/citation handling, full HTTP flow with Claude and vector search stubbed); 3 live Atlas tests that run once `.env` is configured and fixtures are seeded |
 
-[docs/DESIGN.md](docs/DESIGN.md) maps this README to the data model, API and modules. The earlier website-voting design is archived in [docs/archive/](docs/archive/website-voting-design.md). Approved learning and shared project context are designed but not yet implemented.
+Not implemented: live document or repository connectors, multiple model adapters, coding-tool handoff, artifact types other than HTML, A/B comparison, and a complete erasure workflow.
+
+[docs/DESIGN.md](docs/DESIGN.md) maps this README to the data model, API and modules. The earlier website-voting design is archived in [docs/archive/](docs/archive/website-voting-design.md).
 
 ### Repository layout
 
 ```text
 backend/
-  app/main.py          FastAPI application
-  app/routes/          Auth, projects, runs, lessons, and voice route stubs
-  app/agent/           Intent, retrieval, brief, execution, validation, and learning modules
+  app/main.py          FastAPI application (API under /api, frontend at /)
+  app/routes/          Auth, projects, runs, lessons, and voice endpoints
+  app/agent/           Pipeline: intent, retrieval, brief, execution, validation, learning; Claude/Voyage/ElevenLabs clients
   app/repo/            Scope filters and scoped data access (the only path to Atlas)
-  tests/               Scope-filter tests and isolation placeholder
-scripts/               Atlas setup, seed scripts, and fixture placeholders
+  tests/               Offline tests and live Atlas isolation tests
+frontend/              Request → brief → result → feedback screen with a project-context sidebar
+scripts/               Atlas setup, seeding, and demo fixtures
 docs/                  Technical design; archive/ holds the earlier prototype design
 skills/                Repository-specific development instructions
 ```
@@ -228,20 +234,18 @@ From the repository root:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r backend/requirements.txt
-cp .env.example .env
+cp .env.example .env              # MONGODB_URI (Atlas Sandbox), ANTHROPIC_API_KEY, VOYAGE_API_KEY, ELEVENLABS_API_KEY
+python scripts/setup_atlas.py     # collections, validator, indexes, 3 Vector Search indexes, TTL
+python scripts/seed.py --reset    # demo fixtures (embeds them with Voyage)
+uvicorn app.main:app --reload --app-dir backend
+# open http://localhost:8000 and choose a demo user
 ```
 
-Configure `.env` locally using the values described in [.env.example](.env.example). The scaffold currently uses `MONGODB_URI`, `MONGODB_DB`, `ANTHROPIC_API_KEY`, `CLAUDE_MODEL`, `VOYAGE_API_KEY`, `EMBED_MODEL`, `EMBED_DIMS`, and `SESSION_SECRET`; ElevenLabs settings are for the planned voice flow. Keep the embedding dimensions consistent with the chosen model and search index. For the hackathon, provision the project and cluster through the supplied Atlas Sandbox invitation.
-
-The existing test command is:
+Keep `EMBED_DIMS` consistent with the embedding model and search indexes. For the hackathon, provision the cluster through the supplied Atlas Sandbox invitation.
 
 ```bash
-pytest backend/tests
+pytest backend/tests              # offline tests; live Atlas tests run when .env is set and fixtures are seeded
 ```
-
-This currently covers the scope filters only; it does not verify the product workflow. The Atlas isolation test is skipped until fixtures exist.
-
-**There is no working end-to-end quickstart yet.** `scripts/setup_atlas.py` and `scripts/seed.py` are placeholders. `uvicorn app.main:app --reload --app-dir backend` starts the API only; there is no frontend to serve yet.
 
 ## Team ownership
 

@@ -5,7 +5,7 @@ description: PromptForge's request → context → cited brief → execute → l
 
 # Brief pipeline
 
-Spec: README.md. Code map: docs/DESIGN.md "Pipeline".
+Spec: README.md. Code map: docs/DESIGN.md "Pipeline". Orchestration lives in `backend/app/agent/pipeline.py`; Claude calls go through `agent/llm.py` (`parse` for structured output, `generate_text` for streamed HTML).
 
 | Step | Module | Rule |
 |---|---|---|
