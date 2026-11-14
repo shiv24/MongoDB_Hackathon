@@ -28,6 +28,7 @@ class OutcomeIn(BaseModel):
 class FeedbackIn(BaseModel):
     text: str
     lesson: str | None = None
+    propose_lesson: bool = True
 
 
 @router.get("/{run_id}")
@@ -54,6 +55,8 @@ def record_outcome(request: Request, run_id: str, body: OutcomeIn):
 def feedback(request: Request, run_id: str, body: FeedbackIn):
     s = current(request)
     runs.get(s, run_id)
-    from app.agent import llm
-    lesson = body.lesson or llm.propose(body.text)
+    lesson = body.lesson
+    if body.propose_lesson and not lesson:
+        from app.agent import llm
+        lesson = llm.propose(body.text)
     return pipeline.feedback(s, run_id, body.text, lesson)

@@ -1,11 +1,11 @@
-// PromptForge UI: talk to the ElevenLabs agent -> cited brief (live) -> export for Claude Code
-// -> record result -> feedback -> approved lesson. Server text is inserted with textContent only.
+// PromptForge UI: type or dictate a request -> grounded prompt -> generated artifact.
+// Server text is inserted with textContent only.
 
 
 const $ = (id) => document.getElementById(id);
 const DEFAULT_USER_ID = "alice";
 const DEFAULT_PROJECT_ID = "lumen-signup";
-const state = { me: null, projectId: null, run: null, context: null, conversation: null, agentSessionId: null, poll: null };
+const state = { me: null, projectId: null, run: null, context: null, previewing: false, feedbackRunId: null };
 
 // ---------- helpers ----------
 async function api(path, opts = {}) {
@@ -54,83 +54,20 @@ async function init() {
   await loadContext();
 }
 
-// ---------- conversation with the ElevenLabs agent ----------
-function addLine(role, text) {
-  show("transcript");
-  const list = $("transcript");
-  list.append(el("li", { class: role }, el("span", { class: "who" }, role === "agent" ? "PromptForge agent" : "You"), text));
-  list.scrollTop = list.scrollHeight;
-}
-
-async function startConversation(textOnly) {
-  if (!state.projectId) throw new Error("The default workspace is still loading. Try again in a moment.");
-  if (state.conversation) return;
-  const { Conversation } = await import("https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.32.1/+esm");
-  const s = await api("/voice/session", { method: "POST", body: { project_id: state.projectId } });
-  state.agentSessionId = s.agent_session_id;
-  $("transcript").replaceChildren();
-  state.conversation = await Conversation.startSession({
-    signedUrl: s.signed_url,
-    dynamicVariables: s.dynamic_variables,      // secret__pf_token is used only in tool headers, never sent to the LLM
-    textOnly,
-    connectionType: "websocket",
-    onConnect: () => { $("agent-status").textContent = textOnly ? "Connected (text)" : "Listening…"; },
-    onDisconnect: () => { pollRun(); $("agent-status").textContent = "Conversation ended"; stopConversationUi(); },
-    onError: (msg) => toast(`Agent error: ${msg}`),
-    onModeChange: ({ mode }) => { if (!textOnly) $("agent-status").textContent = mode === "speaking" ? "Agent speaking…" : "Listening…"; },
-    onMessage: ({ message, role }) => addLine(role, message),
-  });
-  show("agent-btn", false); show("talk-btn", false); show("type-btn", false); show("end-btn"); show("type-row", true);
-  clearInterval(state.poll);
-  state.poll = setInterval(pollRun, 2000);   // the agent saves briefs through tools; mirror them here
-}
-
-function stopConversationUi() {
-  state.conversation = null; clearInterval(state.poll);
-  show("agent-btn"); show("talk-btn"); show("type-btn"); show("end-btn", false); show("type-row", true);
-}
-
-async function endAgentConversation() { if (state.conversation) { try { await state.conversation.endSession(); } catch { /* already closed */ } stopConversationUi(); } }
-
-function tellAgent(text) {
-  if (!state.conversation) { toast("Start a conversation with the agent first."); return false; }
-  state.conversation.sendUserMessage(text); addLine("user", text); return true;
-}
-
-$('agent-btn').addEventListener('click', e => busy(e.target,'Connecting…',()=>startConversation(false)));
-$('end-btn').addEventListener('click', endAgentConversation);
-
-async function pollRun() {
-  if (!state.agentSessionId) return;
-  try {
-    const run = await api(`/voice/session/${state.agentSessionId}/run`);
-    if (!run) return;
-    const changed = !state.run || state.run._id !== run._id || state.run.updated_at !== run.updated_at || state.run.status !== run.status;
-    if (changed) { state.run = run; renderRun(); renderContext(); }
-  } catch { /* transient */ }
-}
-
-
 // ---------- direct request and optional microphone ----------
 let recording = null;
 let microphone = null;
-async function endConversation() {
-  await endAgentConversation();
-  if (recording && recording.state !== 'inactive') recording.stop();
-  if (microphone) microphone.getTracks().forEach(t => t.stop());
-  state.agentSessionId = null;
-}
 async function submitRequest(clarification = '') {
-  if(state.conversation) { tellAgent(clarification || $('type-input').value); return; }
   if (!state.projectId) throw new Error('The default workspace is still loading. Try again in a moment.');
   const request = clarification && state.run ? state.run.request : $('type-input').value.trim();
   if (!request) throw new Error('Describe what you want built.');
   const answers = clarification ? (state.run?.clarification_text || '') + '\n' + clarification : '';
   state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers}});
   renderRun(); await loadContext();
+  if (state.run.status === 'draft') await generatePreview();
 }
-function tell(text) { if(state.conversation) return tellAgent(text); busy($('send-btn'), 'Updating…', () => submitRequest(text)); }
-$('send-btn').addEventListener('click', e => busy(e.target, 'Building brief…', () => submitRequest()));
+function tell(text) { busy($('send-btn'), 'Updating…', () => submitRequest(text)); }
+$('send-btn').addEventListener('click', e => busy(e.target, 'Building artifact…', () => submitRequest()));
 $('type-input').addEventListener('keydown', e => { if(e.key === 'Enter') $('send-btn').click(); });
 $('type-btn').addEventListener('click', () => $('type-input').focus());
 $('talk-btn').addEventListener('click', async () => {
@@ -150,18 +87,29 @@ $('talk-btn').addEventListener('click', async () => {
         const response=await fetch('/api/voice/transcribe',{method:'POST',body:form});
         const result=await response.json();
         if(!response.ok) throw new Error(result.error || 'Transcription failed');
-        $('type-input').value=result.text; toast('Review the transcript, then build the brief.');
+        $('type-input').value=result.text; toast('Review the transcript, then build the artifact.');
       } catch(e) { toast(e.message); }
     };
     recording.start(); $('talk-btn').textContent='Stop recording';
     setTimeout(()=>{if(recorder.state==='recording')recorder.stop();},60000);
   } catch(e) { toast('Microphone unavailable. You can type your request.'); }
 });
-$('generate-btn').addEventListener('click', e => busy(e.target,'Generating preview…',async()=>{
-  try { state.run=await api(`/build/${state.run._id}/preview`,{method:'POST'}); }
-  catch(err) { state.run=await api(`/runs/${state.run._id}`); renderRun(); throw err; }
+async function generatePreview() {
+  if (!state.run?._id || state.previewing) return;
+  state.previewing = true;
   renderRun();
-}));
+  try {
+    state.run = await api(`/build/${state.run._id}/preview`, { method: 'POST' });
+  } catch (err) {
+    state.run = await api(`/runs/${state.run._id}`);
+    toast(`Preview could not be generated: ${err.message}`);
+  } finally {
+    state.previewing = false;
+    renderRun();
+  }
+}
+
+$('generate-btn').addEventListener('click', e => busy(e.target, 'Generating preview…', generatePreview));
 
 // ---------- project context sidebar ----------
 async function loadContext() {
@@ -223,20 +171,32 @@ function renderRun() {
   const r = state.run;
   const hasBrief = !!r?.brief;
   show("brief-card", hasBrief);
-  show("result-card", hasBrief && ["exported", "reviewed"].includes(r.status));
-  show("feedback-card", hasBrief && ["exported", "reviewed"].includes(r.status));
-  show('preview-card', !!r?.artifact && r.artifact.brief_revision === r.brief_revision && r.status !== 'stale');
-  $('preview-frame').srcdoc = r?.artifact?.html || '';
+  const hasPreview = !!r?.artifact && r.artifact.brief_revision === r.brief_revision && r.status !== 'stale';
+  show("feedback-card", hasPreview);
+  if (hasPreview && state.feedbackRunId !== r._id) {
+    state.feedbackRunId = r._id;
+    $("feedback-text").value = "";
+    $("feedback-up").setAttribute("aria-pressed", "false");
+    $("feedback-down").setAttribute("aria-pressed", "false");
+    $("feedback-status").textContent = "";
+    $("feedback-lesson").replaceChildren();
+  }
+  show('preview-card', state.previewing || hasPreview);
+  $('preview-status').textContent = state.previewing ? 'Building preview…' : hasPreview ? 'Preview ready' : '';
+  if (hasPreview) $('preview-frame').srcdoc = r.artifact.html;
+  else if (!state.previewing) $('preview-frame').srcdoc = '';
   show('handoff', false);
   if (!hasBrief) return;
   $("run-status").replaceChildren(chip(r.status));
   $("brief-rev").textContent = r.brief_revision ? `revision ${r.brief_revision} by the agent` : "";
+  if (["needs_answers", "stale"].includes(r.status)) $("brief-details").open = true;
+  else if (state.previewing || hasPreview) $("brief-details").open = false;
 
   show("stale", r.status === "stale");
   if (r.status === "stale") {
     $("stale").replaceChildren(el("strong", {}, "Cited context changed since this brief was prepared. "),
       el("ul", {}, (r.changes || []).map((c) => el("li", {}, `${c.key} (${c.type}): ${c.change}`))),
-      el("button", { onclick: () => tell(`The brief is stale: ${(r.changes || []).map((c) => `${c.key} ${c.change}`).join("; ")}. Please get the project context again and save an updated brief.`) }, "Ask the agent to redo it"));
+      el("button", { onclick: () => tell(`The brief is stale: ${(r.changes || []).map((c) => `${c.key} ${c.change}`).join("; ")}. Rebuild with the updated project context.`) }, "Rebuild with updated context"));
   }
 
   const b = r.brief;
@@ -254,7 +214,7 @@ function renderRun() {
   if (!qs.length) root.append(el("p", { class: "muted" }, "None"));
   qs.forEach((q, i) => root.append(el("div", { class: `question ${q.blocking ? "blocking" : ""}` },
     q.blocking ? chip("blocking") : chip("non-blocking"), " ", q.text, citeChips(q.sources),
-    el("div", { class: "row" }, el("input", { id: `qa-${i}`, placeholder: "Answer (sent to the agent)" }),
+    el("div", { class: "row" }, el("input", { id: `qa-${i}`, placeholder: "Additional guidance" }),
       el("button", { class: "secondary", onclick: () => { const a = $(`qa-${i}`).value.trim(); if (a) tell(`Answer to "${q.text}": ${a}`); } }, "Answer")))));
   if ((r.answers || []).length) root.append(el("h3", {}, "Resolved"), el("ul", {}, r.answers.map((a) => el("li", {}, `${a.question} → ${a.answer}`))));
   if ((b.assumptions || []).length) root.append(el("h3", {}, "Assumptions"), el("ul", {}, b.assumptions.map((a) => el("li", {}, a))));
@@ -262,15 +222,6 @@ function renderRun() {
   root.querySelectorAll("[contenteditable]").forEach((n) => n.addEventListener("input", () => show("save-brief-btn")));
   show("save-brief-btn", false);
 
-  const checks = b.acceptance_checks || [];
-  const recorded = Object.fromEntries((r.checks || []).map((c, i) => [i, c]));
-  $("outcome-checks").replaceChildren(...checks.map((c, i) => {
-    const sel = el("select", { id: `oc-${i}` }, ...["not_run", "passed", "failed"].map((v) => el("option", { value: v }, v.replace("_", " "))));
-    sel.value = recorded[i]?.result || "not_run";
-    const ev = el("input", { id: `oe-${i}`, placeholder: "Evidence (what you saw)" }); ev.value = recorded[i]?.evidence || "";
-    return el("li", {}, sel, c.text, citeChips(c.sources), ev);
-  }));
-  if (!checks.length) $("outcome-checks").append(el("li", { class: "muted" }, "The brief has no acceptance checks."));
 }
 
 $("save-brief-btn").addEventListener("click", (e) => busy(e.target, "Saving…", async () => {
@@ -290,52 +241,53 @@ $("export-btn").addEventListener("click", (e) => busy(e.target, "Rechecking memo
   const a = el("a", { href: URL.createObjectURL(new Blob([md], { type: "text/markdown" })), download: "promptforge-brief.md" });
   a.click(); URL.revokeObjectURL(a.href);
   try { await navigator.clipboard.writeText(md); toast("Brief downloaded and copied."); } catch { toast("Brief downloaded. Clipboard unavailable."); }
-  state.run = await api(`/runs/${state.run._id}`); renderRun(); show("handoff"); await loadContext();
+  state.run = await api(`/runs/${state.run._id}`); renderRun(); $("brief-details").open = true; show("handoff"); await loadContext();
 }));
 
-$("outcome-btn").addEventListener("click", (e) => busy(e.target, "Saving…", async () => {
-  const n = (state.run.brief.acceptance_checks || []).length;
-  const results = [...Array(n).keys()].map((i) => ({ index: i, result: $(`oc-${i}`).value, evidence: $(`oe-${i}`).value }));
-  state.run = await api(`/runs/${state.run._id}/outcome`, { method: "POST", body: { results, tool: $("outcome-tool").value || null } });
-  renderRun(); toast("Result recorded as outcome evidence.");
-}));
-
-// ---------- feedback -> proposed lesson -> approval ----------
-$("feedback-btn").addEventListener("click", (e) => busy(e.target, "Saving…", async () => {
-  const text = $("feedback-text").value.trim(); if (!text) throw new Error("Write the feedback first.");
-
-  const r = await api(`/runs/${state.run._id}/feedback`, { method: "POST", body: { text, lesson: $("feedback-lesson").value } });
-  renderProposal(r); await loadContext();
-}));
-
-function renderProposal(r) {
-  const box = $("proposal"); box.replaceChildren();
-  if (!r.proposed) { box.append(el("p", { class: "muted" }, "Feedback saved. No lesson was proposed.")); return; }
-  const l = r.proposed;
-  const allowed = r.scopes_allowed || ["personal"];
-  const text = el("textarea", { rows: 2 }); text.value = l.text;
-  const radio = (value, label) => el("label", { title: allowed.includes(value) ? "" : "Requires publisher or admin role" },
-    el("input", { type: "radio", name: "scope", value, checked: value === "personal", disabled: !allowed.includes(value) }), label);
-  box.append(el("div", { class: "proposal" },
-    el("strong", {}, "Suggested lesson"), " ", chip("proposed"), text,
-    r.duplicate_of ? el("p", { class: "uncited" }, `Looks like a duplicate of an existing lesson (${r.duplicate_of}).`) : null,
-    (l.conflicts || []).length ? el("div", { class: "callout warn" }, el("strong", {}, "Conflicts with: "),
-      el("ul", {}, l.conflicts.map((c) => el("li", {}, `${c.type}: ${c.text}`)))) : null,
-    el("p", { class: "hint" }, "Who should this apply to?"),
-    el("div", { class: "scopes" }, radio("personal", "Just me"), radio("project", "This project"), radio("team", "Whole team")),
-    el("div", { class: "row" },
-      el("button", { class: "secondary", onclick: (ev) => busy(ev.target, "…", async () => { await api(`/lessons/${l._id}/reject`, { method: "POST" }); box.replaceChildren(el("p", { class: "muted" }, "Rejected. Nothing was remembered.")); await loadContext(); }) }, "Don't remember"),
-      el("span", { class: "spacer" }),
-      el("button", { onclick: (ev) => busy(ev.target, "Saving…", async () => {
-        const scope = box.querySelector("input[name=scope]:checked").value;
-        await api(`/lessons/${l._id}/approve`, { method: "POST", body: { scope, text: text.value } });
-        box.replaceChildren(el("p", {}, `Remembered at ${scope} scope. The next relevant request will cite it.`)); await loadContext();
-      }) }, "Approve lesson"))));
+// ---------- simple artifact feedback ----------
+async function submitFeedback(rating) {
+  const comment = $("feedback-text").value.trim();
+  const label = rating === "up" ? "Thumbs up" : "Thumbs down";
+  const text = comment ? `${label}: ${comment}` : label;
+  const result = await api(`/runs/${state.run._id}/feedback`, {
+    method: "POST", body: { text, propose_lesson: Boolean(comment) },
+  });
+  $("feedback-up").setAttribute("aria-pressed", String(rating === "up"));
+  $("feedback-down").setAttribute("aria-pressed", String(rating === "down"));
+  $("feedback-status").textContent = "Thanks for the feedback.";
+  renderFeedbackLesson(result);
 }
 
+$("feedback-up").addEventListener("click", (e) => busy(e.currentTarget, "Saving…", () => submitFeedback("up")));
+$("feedback-down").addEventListener("click", (e) => busy(e.currentTarget, "Saving…", () => submitFeedback("down")));
 
-// lessons approved by voice show up in the sidebar
-setInterval(() => { if (state.conversation) loadContext().catch(() => {}); }, 5000);
+function renderFeedbackLesson(result) {
+  const box = $("feedback-lesson");
+  box.replaceChildren();
+  if (!result.proposed) return;
+
+  const lesson = result.proposed;
+  const scope = (result.scopes_allowed || []).includes("project") ? "project" : "personal";
+  const text = el("textarea", { rows: 2, "aria-label": "Suggested lesson" });
+  text.value = lesson.text;
+  box.append(el("div", { class: "generated-lesson" },
+    el("strong", {}, "Suggested lesson"),
+    el("p", { class: "hint" }, "Generated from your feedback. Review it before saving."),
+    text,
+    el("div", { class: "row" },
+      el("button", { class: "secondary", onclick: (event) => busy(event.currentTarget, "Dismissing…", async () => {
+        await api(`/lessons/${lesson._id}/reject`, { method: "POST" });
+        box.replaceChildren();
+        $("feedback-status").textContent = "Feedback saved. Suggested lesson dismissed.";
+      }) }, "Dismiss"),
+      el("span", { class: "spacer" }),
+      el("button", { onclick: (event) => busy(event.currentTarget, "Saving…", async () => {
+        await api(`/lessons/${lesson._id}/approve`, { method: "POST", body: { scope, text: text.value.trim() } });
+        box.replaceChildren();
+        $("feedback-status").textContent = scope === "project" ? "Lesson saved for this project." : "Lesson saved for you.";
+        await loadContext();
+      }) }, "Save lesson"))));
+}
 init().catch((e) => {
   $("active-context").textContent = "Workspace unavailable";
   toast(e.message);

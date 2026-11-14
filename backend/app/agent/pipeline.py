@@ -48,13 +48,15 @@ def save_brief(session: dict, run_id: str, payload: dict) -> dict:
     run = runs.get(session, run_id)
     if run["status"] in ("exported", "reviewed"):
         raise ValueError("this brief was already exported; start a new request")
+    payload = dict(payload)
+    payload["other_questions"] = list(payload.get("blocking_questions") or []) + list(payload.get("other_questions") or [])
+    payload["blocking_questions"] = []
     brief = brief_mod.validate_citations(brief_mod.from_agent(payload), run["provenance"])
     answers = brief_mod.parse_resolved(payload.get("resolved_questions"))
     feature = (payload.get("feature") or "").strip() or run["intent"]["feature"]
-    blocking = [q for q in brief["open_questions"] if q["blocking"]]
     return runs.update(session, run_id, {
         "brief": brief, "answers": answers, "intent.feature": feature,
-        "status": "needs_answers" if blocking else "draft", "stale_reason": None, "changes": [],
+        "status": "draft", "stale_reason": None, "changes": [],
         "brief_revision": run.get("brief_revision", 0) + 1})
 
 
@@ -66,9 +68,10 @@ def edit_brief(session: dict, run_id: str, brief: dict) -> dict:
     if missing:
         raise ValueError(f"brief is missing {missing}")
     checked = brief_mod.validate_citations(brief, run["provenance"])
-    blocking = [q for q in checked["open_questions"] if q.get("blocking") and not q.get("answer")]
+    for question in checked["open_questions"]:
+        question["blocking"] = False
     return runs.update(session, run_id, {"brief": checked, "edited_by": session["user_id"],
-                                         "status": "needs_answers" if blocking else "draft",
+                                         "status": "draft",
                                          "brief_revision": run.get("brief_revision", 0) + 1, "artifact": None})
 
 

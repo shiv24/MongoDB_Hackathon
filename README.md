@@ -112,7 +112,7 @@ The main screen is a place to delegate work and review the result.
 - **Project setup:** Supply a spec, relevant repository snapshot, and explicit decisions; review their source, owner, and scope. These establish the starting context before the first request.
 - **Request:** Choose a project, speak or type a request, and review the transcript.
 - **Context:** Inspect the selected sources, decisions, and preferences, with their attribution and scope.
-- **Brief:** Review or edit the assembled instructions; resolve blocking questions; export or run.
+- **Brief:** PromptForge uses explicit assumptions instead of blocking questions; review the collapsible prompt if desired.
 - **Result:** Inspect the generated artifact and validation evidence. A failed or unrun check remains visible.
 - **Feedback:** Explain a correction and decide whether the proposed lesson should be remembered.
 
@@ -176,7 +176,7 @@ python scripts/seed.py
 uvicorn app.main:app --reload --app-dir backend
 ```
 
-Open http://localhost:8000. Choose Alice and a project, type a request, and click **Build brief**. Resolve blocking questions, then export or generate a website preview. Record outcomes and approve suggested lessons explicitly.
+Open http://localhost:8000, type a request, and click **Build artifact**. PromptForge chooses reasonable defaults, shows the artifact first, and keeps the grounded prompt collapsible. Record outcomes and approve suggested lessons explicitly.
 
 `doctor --live` tests connectivity and model access; its Voyage embedding probe consumes a small number of tokens. It does not prove the full workflow. Setup must finish with all three vector indexes READY. Allow time for freshly seeded data to be indexed. Atlas also needs your client IP allowed and a database user with appropriate permissions.
 

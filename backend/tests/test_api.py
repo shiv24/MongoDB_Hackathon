@@ -115,11 +115,10 @@ def test_agent_drafts_user_exports_feedback_becomes_lesson(client, db):
         "current_decisions": ["Create accounts through Lumen ID [D1]"],
         "acceptance_checks": ["Form has an email field [S1]"],
         "blocking_questions": ["What are the company size options?"]}).json()
-    assert saved["status"] == "needs_answers" and saved["blocking_questions"]
+    assert saved["status"] == "draft" and saved["blocking_questions"] == []
 
     # the UI polls the run the agent is working on
     assert client.get(f"/api/voice/session/{s['agent_session_id']}/run").json()["_id"] == run_id
-    assert client.get(f"/api/runs/{run_id}/export").status_code == 409  # blocking question unresolved
 
     saved = client.post("/api/agent/brief", headers=h, json={
         "run_id": run_id, "objective": "Build the signup page",
@@ -160,6 +159,23 @@ def test_member_agent_cannot_publish_team_lesson(client):
     fb = client.post("/api/agent/feedback", headers=h, json={"run_id": run_id, "feedback": "x", "lesson": "Use sentence case."}).json()
     assert "team" not in fb["scopes_allowed"]
     assert client.post("/api/agent/lessons/approve", headers=h, json={"lesson_id": fb["proposed_lesson_id"], "scope": "team"}).status_code == 403
+
+
+def test_simple_ui_feedback_does_not_propose_lesson(client, db, monkeypatch):
+    _, h = _voice_session(client)
+    run_id = client.post("/api/agent/context", json={"request": "signup", "search_query": "signup"}, headers=h).json()["run_id"]
+
+    from app.agent import llm
+    monkeypatch.setattr(llm, "propose", lambda _text: pytest.fail("simple feedback must not propose a lesson"))
+    response = client.post(f"/api/runs/{run_id}/feedback", json={
+        "text": "Thumbs down: The spacing feels cramped.", "propose_lesson": False,
+    })
+
+    assert response.status_code == 200
+    assert response.json()["proposed"] is None
+    saved = db.feedback.find_one({"run_id": run_id})
+    assert saved["text"] == "Thumbs down: The spacing feels cramped."
+    assert saved["proposed_lesson_id"] is None
 
 
 def test_stale_brief_refused_at_export(client, db):

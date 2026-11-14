@@ -6,10 +6,23 @@ from app.main import app
 from app import config
 from app.agent import pipeline, llm
 from app.repo import runs, lessons, agent_sessions
+from app.repo.bootstrap import DEFAULT_PROJECT, DEFAULT_USER, ensure_demo_workspace
 from app.db import now
 from app.errors import Conflict, NotFound, NotLoggedIn
 from app.routes.build import safe_html
 from conftest import ALICE, BOB
+
+
+def test_demo_workspace_bootstrap_is_idempotent(db):
+    first = ensure_demo_workspace()
+    assert first == {"user_created": True, "project_created": True}
+    assert db.users.find_one({"_id": "alice"}) == DEFAULT_USER
+    assert db.projects.find_one({"_id": "lumen-signup"}) == DEFAULT_PROJECT
+
+    db.users.update_one({"_id": "alice"}, {"$set": {"name": "Existing Alice"}})
+    second = ensure_demo_workspace()
+    assert second == {"user_created": False, "project_created": False}
+    assert db.users.find_one({"_id": "alice"})["name"] == "Existing Alice"
 
 
 def test_personal_provenance_does_not_leak_through_runs(db):
@@ -51,13 +64,17 @@ def test_direct_build_preview_and_cache(db,monkeypatch):
     db.users.insert_one({'_id':'alice','team_id':'team_a','project_ids':['signup'],'role':'publisher','name':'Alice'})
     db.projects.insert_one({'_id':'signup','team_id':'team_a','name':'Signup'})
     monkeypatch.setattr(retrieve,'gather',lambda *a:[])
-    payload=llm.Draft(objective='Signup',requirements=['Build signup [U1]'],current_decisions=[],implementation_context=[],preferences=[],acceptance_checks=['Visible form'],blocking_questions=[],other_questions=[],assumptions=[],resolved_questions=[])
+    payload=llm.Draft(objective='Signup',requirements=['Build signup [U1]', 'Validate all input'],current_decisions=[],implementation_context=['No existing interface [U1]'],preferences=[],acceptance_checks=['Visible form'],blocking_questions=['Which layout?'],other_questions=[],assumptions=['Use a conventional single-column layout'],resolved_questions=[])
     monkeypatch.setattr(llm,'draft',lambda *a:(payload,{'input_tokens':10}))
     calls=[]
     monkeypatch.setattr(llm,'website',lambda *a:(calls.append(1) or llm.Website(html='<h1>Signup</h1>'),{'output_tokens':10}))
     c=TestClient(app);c.post('/api/login',json={'user_id':'alice'})
     r=c.post('/api/build',json={'project_id':'signup','request':'Build signup'})
     assert r.status_code==200,r.text
+    assert r.json()['status']=='draft' and not any(q['blocking'] for q in r.json()['brief']['open_questions'])
+    assert [item['text'] for item in r.json()['brief']['requirements']] == ['Build signup']
+    assert 'Validate all input' in r.json()['brief']['assumptions']
+    assert 'No existing interface' in r.json()['brief']['assumptions']
     rid=r.json()['_id']
     for _ in range(2):
         result=c.post(f'/api/build/{rid}/preview');assert result.status_code==200,result.text

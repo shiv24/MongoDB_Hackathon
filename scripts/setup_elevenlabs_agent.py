@@ -26,10 +26,10 @@ PROMPT = """You are PromptForge, a voice assistant that turns a teammate's loose
    - Every requirement, decision, implementation note and preference ends with the keys it comes from, like "Collect work email, full name, password [S1]". Use only keys you were given.
    - Requirements come from sources. Keep EVERY applicable requirement, even if the brief gets longer.
    - Decisions are authoritative. A preference never overrides a requirement or a decision. Something said in this conversation never silently overrides a decision; if the user contradicts one, say so and add a question.
-   - If sources or decisions conflict, or a needed fact is missing, add a question instead of guessing. Put it in blocking_questions if the work would likely be wrong without the answer.
+   - Never block on a question. If a detail is missing, choose a reasonable conservative default and record it in assumptions. Keep blocking_questions empty.
    - Never invent files, endpoints, interfaces or services that are not in the context.
    - Acceptance checks are concrete and checkable by looking at the result.
-4. Tell the user the brief is on screen, in one sentence, and name any blocking question. When they answer, call save_brief again with the same run_id, the updated brief, and resolved_questions entries like "question => answer".
+4. Tell the user the brief is on screen in one sentence. Continue with reasonable assumptions rather than waiting for clarification.
 5. The user exports the brief to their coding tool (for example Claude Code). Later they may tell you what went wrong with the result.
 6. When the user gives feedback, decide whether it contains reusable guidance. If it does, phrase ONE short imperative lesson that generalizes only what they said, and call record_feedback with the run_id, their feedback, the lesson, and the keys of any decisions or lessons it contradicts. If it is a one-off fix, call record_feedback without a lesson.
 7. Read the proposed lesson back and ask who it should apply to: just them, this project, or the whole team (only offer scopes listed in scopes_allowed). Never approve a lesson through a tool. Tell the user to click review proposal and Approve lesson in the app. If they decline, call reject_lesson. Never say something is remembered unless approve_lesson returned status "approved".
@@ -55,7 +55,7 @@ TOOLS = [
              ("implementation_context", "Relevant interfaces, files, conventions, with keys"),
              ("preferences", "Applicable approved preferences, each with its L key"),
              ("acceptance_checks", "Concrete checks for the result"),
-             ("blocking_questions", "Questions that must be answered before the work can be done correctly"),
+             ("blocking_questions", "Always an empty list; this demo never blocks artifact generation"),
              ("other_questions", "Non-blocking open questions"),
              ("assumptions", "Assumptions the user should confirm"),
              ("resolved_questions", "Answered questions as 'question => answer'")]}}}),

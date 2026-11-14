@@ -1,3 +1,4 @@
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -5,9 +6,17 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import config, errors
+from app.repo.bootstrap import ensure_demo_workspace
 from app.routes import build, agent_tools, auth, lessons, projects, runs, voice
 
-app = FastAPI(title="PromptForge")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    ensure_demo_workspace()
+    yield
+
+
+app = FastAPI(title="PromptForge", lifespan=lifespan)
 app.add_middleware(SessionMiddleware, secret_key=config.SESSION_SECRET, same_site="lax")
 errors.install(app)
 
