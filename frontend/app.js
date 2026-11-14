@@ -249,7 +249,7 @@ function citeChips(keys) {
   return (keys || []).map((k) => {
     const e = prov[k]; if (!e) return null;
     const label = e.type === "user" ? "Your explicit request or clarification" : e.type === "source" ? `Source "${e.title}" rev ${e.revision}` : e.type === "decision" ? `Team decision rev ${e.revision} (owner ${e.owner_id})` : `Approved ${e.scope} lesson rev ${e.revision}`;
-    return el("span", { class: "cite", title: `${label}\n\n${e.text}` }, k);
+    return el("span", { class: "cite", tabindex: "0", "aria-label": `${label}: ${e.text}`, title: `${label}\n\n${e.text}` }, e.type === "user" ? "Your request" : `${{source:"Source",decision:"Decision",lesson:"Lesson"}[e.type]} ${k.slice(1)}`);
   });
 }
 
