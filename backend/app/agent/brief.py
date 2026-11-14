@@ -19,7 +19,18 @@ def context_block(entries: list[dict]) -> str:
     return "\n\n".join(lines) or "(no context found)"
 
 
+def normalize_citations(text: str) -> str:
+    """Models sometimes group valid keys as [S1, D2]; retain each reference."""
+    def expand(match):
+        inside = match.group(1)
+        if re.fullmatch(r'[SDLU]\d+(?:\s*,\s*[SDLU]\d+)+', inside):
+            return ' '.join(f'[{key.strip()}]' for key in inside.split(','))
+        return match.group(0)
+    return re.sub(r'\[([^]\n]+)\]', expand, text)
+
+
 def _item(text: str) -> dict:
+    text = normalize_citations(text)
     keys = list(dict.fromkeys(CITE.findall(text)))
     clean = re.sub(r"\s*\[[SDLU]\d+\]", "", text).strip()
     return {"text": clean, "sources": keys}

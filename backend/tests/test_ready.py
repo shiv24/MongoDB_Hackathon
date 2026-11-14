@@ -127,3 +127,86 @@ def test_generation_rechecks_changes_after_provider_call(db,monkeypatch):
     with pytest.raises(Conflict):preview(None,r['_id'])
     after=runs.get(ALICE,r['_id'])
     assert not after.get('artifact') and after['generating'] is False
+
+
+def test_decision_requirement_keeps_evidence():
+    from app.agent.llm import Draft
+    from app.routes.build import ground_direct_payload
+    draft = Draft(objective='Signup', requirements=['Do not collect phone numbers [D1]'],
+                  current_decisions=[], implementation_context=[], preferences=[],
+                  acceptance_checks=[], blocking_questions=[], other_questions=[],
+                  assumptions=[], resolved_questions=[])
+    result = ground_direct_payload(draft, {'D1'})
+    assert result['requirements'] == ['Do not collect phone numbers [D1]']
+    assert result['assumptions'] == []
+
+
+def test_project_rule_rejects_blank_text():
+    import pytest
+    from pydantic import ValidationError
+    from app.routes.projects import DecisionIn
+    with pytest.raises(ValidationError):
+        DecisionIn(text='   ')
+    assert DecisionIn(text='  Preserve tenant boundaries.  ').text == 'Preserve tenant boundaries.'
+
+
+def test_source_read_is_scoped_and_returns_current_revision(db):
+    from app.repo import context
+    db.users.insert_one({'_id':'alice','name':'Alice','team_id':'team_a','project_ids':['signup'],'role':'publisher'})
+    source = context.add_source(ALICE, 'signup', 'Spec', 'Old')
+    context.add_source(ALICE, 'signup', 'Spec', 'Current')
+    c = TestClient(app)
+    c.post('/api/login', json={'user_id':'alice'})
+    response = c.get('/api/projects/signup/sources/' + source['source_id'])
+    assert response.status_code == 200
+    assert response.json()['text'] == 'Current'
+    assert c.get('/api/projects/other/sources/' + source['source_id']).status_code == 403
+
+
+def test_retrieval_excludes_low_relevance_lessons(db, monkeypatch):
+    from app.agent import retrieve
+    monkeypatch.setattr(retrieve.context, 'search_sources', lambda *a, **k: [])
+    monkeypatch.setattr(retrieve.context, 'search_decisions', lambda *a, **k: [])
+    records = [{'_id':str(i), 'revision':1,'scope':'project','owner_id':'alice','text':text,'score':0.8}
+               for i,text in enumerate(['Calculator equals button', 'Signup password hints'])]
+    monkeypatch.setattr(retrieve.lessons, 'search', lambda *a, **k: records)
+    monkeypatch.setattr(retrieve.embed, 'rerank', lambda q, docs, limit: [(1,0.6),(0,0.1)] if docs else [])
+    entries = retrieve.gather(ALICE, 'signup', 'Build signup')
+    assert [e['text'] for e in entries] == ['Signup password hints']
+
+
+def test_grouped_citations_preserve_requirements():
+    draft = llm.Draft(objective='Export',requirements=['Respect filters [S1, D2]'],
+                      current_decisions=[],implementation_context=[],preferences=[],acceptance_checks=[],
+                      blocking_questions=[],other_questions=[],assumptions=[],resolved_questions=[])
+    from app.routes.build import ground_direct_payload
+    result = ground_direct_payload(draft, {'S1','D2'})
+    assert result['requirements'] == ['Respect filters [S1] [D2]']
+    assert not result['assumptions']
+
+
+def test_selected_feedback_included_without_search_hit(db):
+    from app.routes.build import include_selected_lessons
+    lesson = lessons.propose(ALICE, 'signup', 'Make buttons purple', 'r', 'f', [], None, [])
+    lessons.approve(ALICE, lesson['_id'], 'project')
+    entries = include_selected_lessons(ALICE, 'signup', [], [lesson['_id'], lesson['_id']])
+    assert len(entries) == 1
+    assert entries[0]['text'] == 'Make buttons purple'
+    assert entries[0]['selection'] == 'explicit_feedback'
+    assert include_selected_lessons(ALICE, 'signup', entries, [lesson['_id']]) == entries
+
+
+def test_selected_feedback_enforces_status_scope_and_expiry(db):
+    from app.routes.build import include_selected_lessons
+    lesson = lessons.propose(ALICE, 'signup', 'Make buttons purple', 'r', 'f', [], None, [])
+    with pytest.raises(Conflict):
+        include_selected_lessons(ALICE, 'signup', [], [lesson['_id']])
+    lessons.approve(ALICE, lesson['_id'], 'personal')
+    with pytest.raises(Conflict):
+        include_selected_lessons(BOB, 'signup', [], [lesson['_id']])
+    db.lessons.update_one({'_id':lesson['_id']}, {'$set':{'scope':'project'}})
+    with pytest.raises(Conflict):
+        include_selected_lessons(ALICE, 'billing', [], [lesson['_id']])
+    db.lessons.update_one({'_id':lesson['_id']}, {'$set':{'expires_at':now()-timedelta(days=1)}})
+    with pytest.raises(Conflict):
+        include_selected_lessons(ALICE, 'signup', [], [lesson['_id']])
