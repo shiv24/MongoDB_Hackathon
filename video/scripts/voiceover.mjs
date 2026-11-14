@@ -1,7 +1,7 @@
 // Generate per-scene narration with ElevenLabs TTS into public/vo/<scene>.mp3.
 // Reads ELEVENLABS_API_KEY / ELEVENLABS_VOICE_ID from the repo .env; the key never enters the video bundle.
 // Usage (from video/):  node scripts/voiceover.mjs [scene ...]
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 
@@ -16,6 +16,7 @@ if (!KEY) throw new Error("ELEVENLABS_API_KEY missing");
 
 const script = JSON.parse(readFileSync(path.join(here, "../src/narration.json"), "utf8"));
 const only = process.argv.slice(2);
+mkdirSync(path.join(here, "../public/vo"), { recursive: true });
 
 for (const [scene, text] of Object.entries(script)) {
   if (only.length && !only.includes(scene)) continue;

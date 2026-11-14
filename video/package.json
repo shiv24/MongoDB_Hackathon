@@ -2,16 +2,21 @@
   "name": "promptforge-video",
   "private": true,
   "scripts": {
-    "studio": "remotion studio src/index.ts",
+    "editor": "revideo editor --projectFile ./src/project.tsx",
     "voice": "node scripts/voiceover.mjs",
-    "render": "remotion render src/index.ts PromptForgeDemo out/promptforge-demo.mp4"
+    "render": "node scripts/render.mjs",
+    "typecheck": "tsc -p ."
   },
   "dependencies": {
-    "@remotion/cli": "^4.0.543",
-    "@types/react": "^18.3.31",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "remotion": "^4.0.543",
+    "@revideo/2d": "^0.11.0",
+    "@revideo/cli": "^0.11.0",
+    "@revideo/core": "^0.11.0",
+    "@revideo/renderer": "^0.11.0",
+    "@revideo/ui": "^0.11.0",
+    "@revideo/vite-plugin": "^0.11.0",
     "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "vite": "^4.5.14"
   }
 }
