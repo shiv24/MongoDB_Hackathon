@@ -31,6 +31,7 @@ def ground_direct_payload(value, valid_keys: set[str]) -> dict:
     for section, prefixes in GROUNDED_SECTIONS.items():
         grounded = []
         for text in payload.get(section) or []:
+            text = brief_mod.normalize_citations(text)
             keys = brief_mod.CITE.findall(text)
             allowed = {key for key in keys if key in valid_keys and key[0] in prefixes}
             if allowed:

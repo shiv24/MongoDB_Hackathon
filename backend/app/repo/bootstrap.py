@@ -26,6 +26,9 @@ def ensure_demo_workspace() -> dict[str, bool]:
         {"$setOnInsert": DEFAULT_USER},
         upsert=True,
     )
+    db.users.update_one({'_id': 'bob'}, {'$setOnInsert': {
+        '_id': 'bob', 'name': 'Bob', 'team_id': DEFAULT_USER['team_id'],
+        'project_ids': DEFAULT_USER['project_ids'], 'role': 'member'}}, upsert=True)
     project = db.projects.update_one(
         {"_id": DEFAULT_PROJECT["_id"]},
         {"$setOnInsert": DEFAULT_PROJECT},

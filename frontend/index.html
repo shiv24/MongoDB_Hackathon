@@ -10,7 +10,7 @@
   <header class="topbar">
     <div class="brand"><span class="brand-icon">✳</span> PromptForge <span class="edition">TEAM INTELLIGENCE</span></div>
     <div class="topbar-controls">
-      <span id="active-context" class="muted">Loading workspace…</span>
+      <span id="active-context" class="muted">Loading workspace…</span><label class="session-label">Demo session <select id="session-user" aria-label="Demo session"><option value="alice">Alice</option><option value="bob">Bob</option></select></label>
     </div>
   </header>
 
@@ -24,7 +24,7 @@
           <button id="talk-btn" type="button">🎙 Record request</button>
 
         </div>
-        <button id="demo-request" class="example-request" type="button">Try an example: export customers ↗</button><div id="type-row" class="row">
+        <button id="demo-request" class="example-request" type="button">Use an example request ↗</button><div id="type-row" class="row">
           <textarea id="type-input" rows="3" aria-label="Your request" placeholder="Build the signup page. Follow what our team decided."></textarea>
           <div class="composer-footer"><span class="hint">⌘ / Ctrl + Enter to create</span><button id="send-btn" type="button">Create prompt <span aria-hidden="true">↗</span></button></div><div id="request-status" class="hidden" role="status"></div><div id="request-error" class="callout warn hidden" role="alert"></div>
         </div>
@@ -67,7 +67,7 @@
 
     <aside class="sidebar">
       <section class="card">
-        <h2>The shared brain</h2>
+        <h2>The shared brain</h2><p class="memory-tag">Knowledge that outlives the chat.</p>
         <p class="hint">Scoped to your team and project. Highlighted items shaped the current brief.</p>
         <button id="brain-open" class="secondary" type="button">Explore shared brain</button><p id="brain-count" class="hint"></p><h3>Sources</h3>
         <ul id="sources" class="items"></ul>
@@ -80,7 +80,7 @@
           <button id="src-btn" class="secondary" type="button">Add source</button>
         </details>
       </section>
-<section class="card history-card"><h3>Your recent prompts</h3><div id="recent-runs"></div></section>
+<section class="card showcase-card"><div class="eyebrow">90-SECOND SHOWCASE</div><h3>Teach once. Help the team.</h3><ol><li><strong>Alice creates a prompt.</strong><span>Start with customer exports.</span></li><li><strong>Alice teaches the project.</strong><span>Add feedback below, then approve the lesson for “This project”.</span></li><li><strong>Bob starts fresh.</strong><span>Switch sessions and request invoice exports. Look for Alice’s lesson in the prompt.</span></li></ol><button id="lesson-example" class="secondary" type="button">Use example feedback</button><p class="hint">This fills the feedback field. Nothing is saved or approved automatically.</p></section><section class="card history-card"><h3>Your recent prompts</h3><div id="recent-runs"></div></section>
     </aside>
   </div>
 

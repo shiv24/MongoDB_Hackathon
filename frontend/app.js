@@ -45,7 +45,8 @@ const chip = (text) => el("span", { class: `chip ${text}` }, String(text).replac
 
 // ---------- fixed demo identity and project ----------
 async function init() {
-  state.me = await api("/login", { method: "POST", body: { user_id: DEFAULT_USER_ID } });
+  state.me = await api("/login", { method: "POST", body: { user_id: sessionStorage.getItem("pf-demo-user") || DEFAULT_USER_ID } });
+  $("session-user").value = state.me.user_id;
   const projects = await api("/projects");
   const project = projects.find((p) => p._id === DEFAULT_PROJECT_ID);
   if (!project) throw new Error(`Default project ${DEFAULT_PROJECT_ID} is not available to ${DEFAULT_USER_ID}. Seed the demo data first.`);
@@ -56,6 +57,24 @@ async function init() {
   if (saved) await openRun(saved[1]);
 }
 
+$('session-user').addEventListener('change', async e => {
+  const next = e.target.value;
+  if (state.previewing || $('send-btn').disabled) { e.target.value = state.me.user_id; toast('Wait for the current request to finish.'); return; }
+  try {
+    await api('/logout', {method:'POST'});
+    state.run = null; state.context = null; state.feedbackRunId = null;
+    history.replaceState(null, '', location.pathname);
+    sessionStorage.setItem('pf-demo-user', next);
+    $('type-input').value = ''; renderRun();
+    await init();
+    toast(`Fresh session as ${state.me.name}. Shared lessons stay; personal prompts do not.`);
+  } catch (err) { toast(err.message); }
+});
+$('lesson-example').addEventListener('click', () => {
+  if (!state.run?.brief) { toast('Create a prompt first, then add feedback.'); return; }
+  $('feedback-text').value = 'For all bulk exports in this project, include a downloadable manifest alongside the data file. The manifest must list active filters, exported row count, excluded fields, requester and timestamp.';
+  $('feedback-card').scrollIntoView({behavior:'smooth',block:'center'}); $('feedback-text').focus();
+});
 async function openRun(id) {
   if (state.previewing) return;
   state.run = await api(`/runs/${id}`);
@@ -85,7 +104,7 @@ $('send-btn').addEventListener('click', e => busy(e.currentTarget, 'Creating…'
   catch (err) { $('request-error').textContent = err.message; show('request-error'); }
   finally { show('request-status', false); }
 }));
-$('demo-request').addEventListener('click', () => { $('type-input').value = 'Build the customer export screen using our product requirements and team decisions.'; $('type-input').focus(); });
+$('demo-request').addEventListener('click', () => { $('type-input').value = state.me?.user_id === 'bob' ? 'Write an implementation prompt for exporting invoices from our billing page.' : 'Write an implementation prompt for exporting customers from our customer list.'; $('type-input').focus(); });
 $('type-input').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('send-btn').click(); });
 
 $('talk-btn').addEventListener('click', async () => {
@@ -269,7 +288,7 @@ function renderRun() {
   const b = r.brief;
   const contributions = [];
   const provenance = Object.fromEntries((r.provenance || []).map(e => [e.key, e]));
-  for (const section of ['current_decisions', 'requirements', 'preferences']) {
+  for (const section of ['preferences', 'current_decisions', 'requirements']) {
     for (const item of b[section] || []) {
       const evidence = (item.sources || []).map(k => provenance[k]).filter(e => e && e.type !== 'user');
       if (!evidence.length || contributions.some(c => c.text === item.text)) continue;
@@ -278,7 +297,7 @@ function renderRun() {
   }
   $('contributions').replaceChildren(el('p', {class:'contribution-heading'}, contributions.length ? 'What your team brought to this prompt' : 'Add team sources to enrich your next prompt'),
     ...contributions.slice(0, 4).map(c => el('details', {class:'contribution'},
-      el('summary', {}, c.text), ...c.evidence.map(e => el('p', {}, `${e.title || (e.type === 'decision' ? 'Team decision' : 'Approved lesson')} · revision ${e.revision}: ${e.text}`)))));
+      el('summary', {}, c.text), ...c.evidence.map(e => el('p', {}, `${e.title || (e.type === 'decision' ? 'Team decision' : 'Approved lesson')} · ${e.approved_by || e.owner_id || 'source'} · revision ${e.revision}: ${e.text}`)))));
 
   const root = $("brief"); root.replaceChildren();
   root.append(el("div", { class: "brief-section" }, el("h3", {}, "Objective"), el("p", { contenteditable: "true", "data-path": "objective" }, b.objective)));

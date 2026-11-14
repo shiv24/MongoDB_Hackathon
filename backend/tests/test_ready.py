@@ -161,3 +161,13 @@ def test_retrieval_excludes_low_relevance_lessons(db, monkeypatch):
     monkeypatch.setattr(retrieve.embed, 'rerank', lambda q, docs, limit: [(1,0.6),(0,0.1)] if docs else [])
     entries = retrieve.gather(ALICE, 'signup', 'Build signup')
     assert [e['text'] for e in entries] == ['Signup password hints']
+
+
+def test_grouped_citations_preserve_requirements():
+    draft = llm.Draft(objective='Export',requirements=['Respect filters [S1, D2]'],
+                      current_decisions=[],implementation_context=[],preferences=[],acceptance_checks=[],
+                      blocking_questions=[],other_questions=[],assumptions=[],resolved_questions=[])
+    from app.routes.build import ground_direct_payload
+    result = ground_direct_payload(draft, {'S1','D2'})
+    assert result['requirements'] == ['Respect filters [S1] [D2]']
+    assert not result['assumptions']
