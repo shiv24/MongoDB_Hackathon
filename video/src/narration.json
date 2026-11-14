@@ -1,0 +1,8 @@
+{
+  "hook": "Every AI session starts from zero. PromptForge changes that.",
+  "request": "Bob asks for the signup page, in React. A plain model only sees this one sentence. His team knows much more.",
+  "context": "PromptForge pulls the spec, the architecture notes and the brand guide, plus current team decisions and approved lessons, from MongoDB Atlas. Anything superseded, unapproved, expired, or from another team is filtered out.",
+  "brief": "The result is a brief where every instruction cites its source. Like this rule: no phone number at signup, corrected by Alice after a privacy review. Unknowns become questions, not guesses.",
+  "result": "Same request, two prompts. The plain prompt asks for a phone number and invents its own auth. The PromptForge brief passes every check.",
+  "close": "Corrections are owned, versioned, and logged. Fix it once, and every teammate's next prompt gets better."
+}
