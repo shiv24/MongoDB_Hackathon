@@ -11,7 +11,7 @@ def context_block(entries: list[dict]) -> str:
     lines = []
     for e in entries:
         if e["type"] == "source":
-            lines.append(f"[{e['key']}] source \"{e['title']}\" rev {e['revision']}:\n{e['text']}")
+            lines.append(f"[{e['key']}] {e.get('scope', 'project')} source \"{e['title']}\" rev {e['revision']}:\n{e['text']}")
         elif e["type"] == "decision":
             lines.append(f"[{e['key']}] team decision rev {e['revision']} (owner {e['owner_id']}): {e['text']}")
         else:
@@ -109,7 +109,7 @@ def to_markdown(run: dict) -> str:
         e = prov.get(k)
         if not e:
             continue
-        label = {"source": f"source \"{e.get('title')}\"", "decision": "team decision",
+        label = {"source": f"{e.get('scope', 'project')} source \"{e.get('title')}\"", "decision": "team decision",
                  "lesson": f"{e.get('scope')} lesson", "user": "user request"}[e["type"]]
         out.append(f"- [{k}] {label} `{e['id']}` revision {e['revision']}: {e['text'][:200]}")
     return "\n".join(out) + "\n"

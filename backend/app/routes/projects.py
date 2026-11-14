@@ -1,5 +1,6 @@
 from io import BytesIO
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from pydantic import BaseModel
@@ -17,6 +18,7 @@ class SourceIn(BaseModel):
     title: str
     text: str
     kind: str = "spec"
+    scope: Literal["personal", "project", "team"] = "project"
 
 
 class DecisionIn(BaseModel):
@@ -41,14 +43,15 @@ def get_context(request: Request, project_id: str):
 
 @router.post("/{project_id}/sources")
 def add_source(request: Request, project_id: str, body: SourceIn):
-    return context.add_source(current(request), project_id, body.title, body.text, body.kind)
+    return context.add_source(current(request), project_id, body.title, body.text, body.kind, body.scope)
 
 
 @router.post("/{project_id}/sources/file")
 async def add_source_file(request: Request, project_id: str, file: UploadFile = File(...),
-                          title: str = Form(""), text: str = Form("")):
+                          title: str = Form(""), text: str = Form(""),
+                          source_scope: Literal["personal", "project", "team"] = Form("project", alias="scope")):
     session = current(request)
-    scope.require_project(session, project_id)
+    scope.require_source_publish(session, project_id, source_scope)
     filename = file.filename or ""
     suffix = Path(filename).suffix.lower()
     is_pdf = file.content_type in {"application/pdf", "application/x-pdf"} or suffix == ".pdf"
@@ -86,7 +89,7 @@ async def add_source_file(request: Request, project_id: str, file: UploadFile = 
     if not source_text:
         raise ValueError("the file contains no extractable text")
     source_title = title.strip() or Path(filename).stem.strip() or "Uploaded source"
-    return context.add_source(session, project_id, source_title, source_text, kind)
+    return context.add_source(session, project_id, source_title, source_text, kind, source_scope)
 
 
 @router.post("/{project_id}/decisions")

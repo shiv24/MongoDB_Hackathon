@@ -47,7 +47,8 @@ def main():
         vecs = embed.documents([f"{s['title']}\n\n{p}" for p in pieces])
         for i, (p, v) in enumerate(zip(pieces, vecs)):
             src_docs.append({"_id": f"{s['source_id']}-r{s.get('revision', 1)}-c{i}", "team_id": s["team_id"],
-                             "project_id": s["project_id"], "source_id": s["source_id"], "title": s["title"],
+                             "project_id": s["project_id"], "scope": s.get("scope", "project"),
+                             "owner_id": s["added_by"], "source_id": s["source_id"], "title": s["title"],
                              "kind": s.get("kind", "spec"), "revision": s.get("revision", 1), "chunk_index": i,
                              "text": p, "embedding": v, "added_by": s["added_by"], "created_at": t})
     db.sources.insert_many(src_docs)

@@ -39,3 +39,29 @@ def project_filter(session: dict, project_id: str) -> dict:
     """Pre-filter for sources and decisions: same team, this project only."""
     require_project(session, project_id)
     return {"$and": [{"team_id": {"$eq": session["team_id"]}}, {"project_id": {"$eq": project_id}}]}
+
+
+def source_filter(session: dict, project_id: str) -> dict:
+    """Company sources, this project's sources, and this user's personal sources."""
+    require_project(session, project_id)
+    return {"$and": [
+        {"team_id": {"$eq": session["team_id"]}},
+        {"$or": [
+            {"scope": {"$eq": "team"}},
+            {"$and": [{"scope": {"$eq": "project"}}, {"project_id": {"$eq": project_id}}]},
+            {"$and": [{"scope": {"$eq": "personal"}}, {"owner_id": {"$eq": session["user_id"]}}]},
+        ]},
+    ]}
+
+
+def require_source_publish(session: dict, project_id: str, scope_name: str) -> None:
+    """Only admins publish company sources; publishers/admins publish project sources."""
+    from app.errors import Forbidden
+    require_project(session, project_id)
+    if scope_name not in ("personal", "project", "team"):
+        raise ValueError("scope must be personal, project, or team")
+    role = session.get("role", "member")
+    if scope_name == "team" and role != "admin":
+        raise Forbidden("only an admin may publish company sources")
+    if scope_name == "project" and role not in ("publisher", "admin"):
+        raise Forbidden("only a publisher or admin may publish project sources")

@@ -1,4 +1,4 @@
-"""Direct typed workflow; generated previews are inert documents."""
+"""Direct typed workflow; generated previews run in an isolated iframe."""
 from copy import deepcopy
 
 from fastapi import APIRouter, Request
@@ -10,6 +10,7 @@ from app.db import get_db, now
 from app.session import current
 from app.errors import Conflict
 router = APIRouter(prefix='/build')
+ARTIFACT_VERSION = 2
 
 GROUNDED_SECTIONS = {
     'requirements': {'S', 'U'},
@@ -83,16 +84,32 @@ def build(request: Request, body: RequestIn):
     pipeline.save_brief(s, run['_id'], payload)
     return runs.update(s, run['_id'], {'usage':usage, 'model':llm.config.OPENAI_BRIEF_MODEL, 'clarification_text':body.clarification})
 
+def allowed_inline_script(script):
+    return (not (set(script.attrs) - {'type'})
+            and script.get('type', '').lower() in ('', 'text/javascript', 'application/javascript'))
+
 def safe_html(html):
     soup = BeautifulSoup(html, 'html.parser')
-    for tag in soup.find_all(['script','iframe','object','embed','base','link','meta']): tag.decompose()
+    for tag in soup.find_all(['iframe','object','embed','base','link','meta']): tag.decompose()
+    for script in soup.find_all('script'):
+        if not allowed_inline_script(script):
+            script.decompose()
+        else:
+            script.attrs = {}
     for tag in soup.find_all(True):
         for attr in list(tag.attrs):
             if attr.lower().startswith('on') or attr.lower() in ('src','srcset','href','action','formaction','srcdoc'):
                 del tag.attrs[attr]
-    # CSP comes first, before any generated content; iframe also has an empty sandbox.
-    policy = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; form-action 'none'; base-uri 'none'"
+    # Inline behavior runs in an opaque-origin iframe. Resource, connection and form access stay blocked.
+    policy = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; form-action 'none'; base-uri 'none'"
     return '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="'+policy+'"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>'+str(soup)+'</body></html>'
+
+def validate_interactive_html(html):
+    soup = BeautifulSoup(html, 'html.parser')
+    if soup.select('button, input, select, textarea') and not any(
+        script.get_text(strip=True) for script in soup.find_all('script') if allowed_inline_script(script)
+    ):
+        raise ValueError('Generated controls have no client-side behavior. Rebuild the artifact.')
 
 @router.post('/{run_id}/preview')
 def preview(request: Request, run_id: str):
@@ -103,7 +120,8 @@ def preview(request: Request, run_id: str):
         if changed:
             run = runs.update(s, run_id, {'brief': repaired, 'status': 'draft', 'artifact': None,
                                            'brief_revision': run.get('brief_revision', 0) + 1})
-    if run.get('artifact') and run['artifact'].get('brief_revision') == run.get('brief_revision'):
+    if (run.get('artifact') and run['artifact'].get('brief_revision') == run.get('brief_revision')
+            and run['artifact'].get('version') == ARTIFACT_VERSION):
         pipeline.export(s, run_id)
         return run
     md = pipeline.export(s, run_id)
@@ -111,10 +129,11 @@ def preview(request: Request, run_id: str):
     if not locked.modified_count: raise Conflict('Generation already in progress.')
     try:
         result, usage = llm.website(md)
+        validate_interactive_html(result.html)
         latest = runs.get(s, run_id)
         if latest.get('brief_revision') != run.get('brief_revision'):
             raise Conflict('Brief changed during generation; generate again.')
         pipeline.export(s, run_id)  # memory may have changed during the provider call
-        return runs.update(s, run_id, {'artifact':{'html':safe_html(result.html),'brief_revision':run.get('brief_revision'),'created_at':now(),'usage':usage,'model':llm.config.OPENAI_GENERATION_MODEL}})
+        return runs.update(s, run_id, {'artifact':{'html':safe_html(result.html),'version':ARTIFACT_VERSION,'brief_revision':run.get('brief_revision'),'created_at':now(),'usage':usage,'model':llm.config.OPENAI_GENERATION_MODEL}})
     finally:
         get_db().runs.update_one({'_id':run_id},{'$set':{'generating':False}})

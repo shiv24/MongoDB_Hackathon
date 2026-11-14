@@ -1,6 +1,6 @@
 {
   "users": [
-    {"_id": "alice", "name": "Alice (Lumen, publisher)", "team_id": "team_a", "project_ids": ["lumen-signup", "lumen-billing"], "role": "publisher"},
+    {"_id": "alice", "name": "Alice (Lumen, admin)", "team_id": "team_a", "project_ids": ["lumen-signup", "lumen-billing"], "role": "admin"},
     {"_id": "bob", "name": "Bob (Lumen, member)", "team_id": "team_a", "project_ids": ["lumen-signup"], "role": "member"},
     {"_id": "carol", "name": "Carol (Orbit, admin)", "team_id": "team_b", "project_ids": ["orbit-signup"], "role": "admin"}
   ],

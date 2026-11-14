@@ -31,6 +31,7 @@ LESSON_SCOPES = ("personal", "project", "team")
 LESSON_STATUSES = ("proposed", "approved", "rejected", "superseded", "retired", "expired")
 DECISION_STATUSES = ("current", "superseded")
 TEAM_PUBLISH_ROLES = ("publisher", "admin")
+SOURCE_SCOPES = ("personal", "project", "team")
 
 # Retrieval
 RETRIEVE_LIMIT = 6               # per record type (source chunks, decisions, lessons)

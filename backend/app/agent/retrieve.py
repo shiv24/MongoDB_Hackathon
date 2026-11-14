@@ -17,7 +17,8 @@ def gather(session: dict, project_id: str, query: str) -> list[dict]:
     for i, (idx, rel) in enumerate(order, 1):
         s = chunks[idx]
         entries.append({"key": f"S{i}", "type": "source", "id": s["source_id"], "chunk_id": s["_id"],
-                        "revision": s["revision"], "title": s["title"], "text": s["text"],
+                        "revision": s["revision"], "title": s["title"], "scope": s.get("scope", "project"),
+                        "owner_id": s.get("owner_id", s.get("added_by")), "text": s["text"],
                         "score": round(s["score"], 4), "rerank": round(rel, 4)})
     for i, d in enumerate(context.search_decisions(session, project_id, vec), 1):
         entries.append({"key": f"D{i}", "type": "decision", "id": d["_id"], "revision": d["revision"],

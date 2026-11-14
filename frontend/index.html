@@ -3,89 +3,118 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>PromptForge</title>
-  <link rel="stylesheet" href="styles.css">
+  <meta name="theme-color" content="#f8f8f6">
+  <title>PromptForge — Make the next thing</title>
+  <link rel="stylesheet" href="styles.css?v=5">
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">PromptForge</div>
-    <div class="topbar-controls">
-      <span id="active-context" class="muted">Loading workspace…</span>
-    </div>
+    <a class="brand" href="/" aria-label="PromptForge home"><span class="brand-mark" aria-hidden="true">✳</span><span>PromptForge</span></a>
+    <div class="workspace-pill"><span class="workspace-dot" aria-hidden="true"></span><span id="active-context">Loading workspace…</span></div>
   </header>
 
   <div class="layout">
     <main class="flow">
-      <!-- 1. Request: type directly or dictate into the request field. -->
-      <section class="card" id="request-card">
-        <h2><span class="step">1</span> Request</h2>
-        <p class="hint">Describe what you want built. PromptForge prepares a grounded brief and displays a visual artifact.</p>
-        <div class="row">
-          <button id="talk-btn" type="button">🎙 Record request</button>
-          <button id="type-btn" class="secondary" type="button">Type instead</button>
-        </div>
-        <div id="type-row" class="row">
-          <input id="type-input" placeholder="On that project doc, can we build the signup page? Keep it consistent with what we decided.">
-          <button id="send-btn" type="button">Build artifact</button>
-        </div>
+      <section class="intro" aria-labelledby="page-title">
+        <span class="eyebrow">YOUR CREATIVE WORKSPACE</span>
+        <h1 id="page-title">What should we build?</h1>
+        <p>Describe an idea. Your project context helps shape it into something you can see.</p>
       </section>
 
-      <!-- 2. Artifact first; the grounded build prompt remains available below. -->
-      <section class="card hidden" id="preview-card">
-        <h2><span class="step">2</span> Built artifact <span id="preview-status" class="muted" role="status"></span></h2>
-        <iframe id="preview-frame" title="Generated artifact preview" sandbox="" referrerpolicy="no-referrer" style="width:100%;height:600px;border:1px solid #ddd"></iframe>
-      </section>
-
-      <section class="card hidden" id="brief-card">
-        <details id="brief-details">
-          <summary><strong>Build prompt</strong> <span id="run-status" class="chip"></span> <span id="brief-rev" class="muted"></span></summary>
-          <div id="stale" class="callout warn hidden"></div>
-          <div id="brief"></div>
-          <div class="row">
-            <button id="save-brief-btn" class="secondary hidden" type="button">Save edits</button>
-            <span class="spacer"></span>
-            <button id="generate-btn" type="button">Rebuild artifact</button>
-            <button id="export-btn" type="button">Export for Claude Code</button>
+      <section class="card request-card" id="request-card" aria-label="Create an artifact">
+        <label class="field-label" for="type-input">Your request</label>
+        <textarea id="type-input" rows="3" placeholder="A clean signup page for our app, using the project guidelines…"></textarea>
+        <div class="composer-footer">
+          <div class="composer-tools">
+            <button id="talk-btn" class="icon-button" type="button" aria-label="Record request" title="Record request">
+              <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="13" rx="3"/><path d="M5 10a7 7 0 0 0 14 0M12 17v5m-4 0h8"/></svg>
+              <span>Record</span>
+            </button>
           </div>
-          <div id="handoff" class="callout hidden">
-            <strong>Prompt exported.</strong> It was downloaded as <code>promptforge-brief.md</code> (clipboard copying is attempted too). In your project folder, run:
-            <pre id="handoff-cmd">claude "Implement the brief in promptforge-brief.md. Follow every requirement and decision, and check each acceptance check."</pre>
+          <button id="send-btn" class="primary-button" type="button">Build artifact <span aria-hidden="true">↗</span></button>
+        </div>
+      </section>
+
+      <section class="card brief-card hidden" id="brief-card">
+        <details id="brief-details">
+          <summary><span><strong>Build prompt</strong><small>See the instructions behind this artifact</small></span><span class="brief-meta"><span id="run-status"></span><span id="brief-rev"></span><span class="chevron" aria-hidden="true">⌄</span></span></summary>
+          <div class="brief-body">
+            <div id="stale" class="callout warn hidden"></div>
+            <div id="brief"></div>
+            <div class="brief-actions">
+              <button id="save-brief-btn" class="secondary hidden" type="button">Save edits</button>
+              <span class="spacer"></span>
+              <button id="generate-btn" class="secondary" type="button">Rebuild artifact</button>
+              <button id="export-btn" class="secondary" type="button">Export prompt</button>
+            </div>
+            <div id="handoff" class="callout hidden"><strong>Prompt exported.</strong> Downloaded as <code>promptforge-brief.md</code>. In your project folder, run:<pre id="handoff-cmd">claude "Implement the brief in promptforge-brief.md. Follow every requirement and decision, and check each acceptance check."</pre></div>
           </div>
         </details>
       </section>
-      <!-- 3. Feedback -->
-      <section class="card hidden" id="feedback-card">
-        <h2><span class="step">3</span> Feedback</h2>
-        <p class="hint">Add an optional note, then choose a rating.</p>
-        <textarea id="feedback-text" rows="3" placeholder="What worked, or what should change?"></textarea>
-        <div class="feedback-actions" role="group" aria-label="Rate this artifact">
-          <button id="feedback-up" class="feedback-rating" type="button" aria-label="Thumbs up" aria-pressed="false"><span aria-hidden="true">👍</span><span>Looks good</span></button>
-          <button id="feedback-down" class="feedback-rating" type="button" aria-label="Thumbs down" aria-pressed="false"><span aria-hidden="true">👎</span><span>Needs work</span></button>
-          <span id="feedback-status" class="muted" role="status"></span>
+
+      <section class="card preview-card hidden" id="preview-card" aria-labelledby="preview-title">
+        <div class="section-head">
+          <div><span class="eyebrow">YOUR RESULT</span><h2 id="preview-title">Built artifact</h2></div>
+          <div class="preview-tools"><button id="upgrade-btn" class="secondary hidden" type="button">Make interactive</button><span id="preview-status" class="status-pill" role="status"></span></div>
         </div>
+        <div class="preview-shell">
+          <div id="preview-empty" class="preview-empty hidden" role="status"><span class="spinner" aria-hidden="true"></span><strong>Making your idea visible</strong><span>Building a preview from your request and project context.</span></div>
+          <div id="preview-legacy" class="preview-legacy hidden"><span class="legacy-icon" aria-hidden="true">↻</span><h3>This build needs an update</h3><p>It was created before interactive previews. Rebuild it to use its controls.</p><button id="upgrade-inline-btn" class="primary-button" type="button">Make interactive</button></div>
+          <iframe id="preview-frame" title="Generated artifact preview" sandbox="allow-scripts" referrerpolicy="no-referrer"></iframe>
+        </div>
+      </section>
+
+      <section class="card feedback-card hidden" id="feedback-card" aria-labelledby="feedback-title">
+        <div class="section-head"><div><span class="eyebrow">MAKE THE NEXT ONE BETTER</span><h2 id="feedback-title">How did we do?</h2></div></div>
+        <form id="feedback-form">
+          <label class="field-label" for="feedback-text">Your thoughts <span class="optional">Optional</span></label>
+          <textarea id="feedback-text" rows="3" placeholder="What worked, or what would you change?"></textarea>
+          <div class="feedback-actions" role="group" aria-label="Rate this artifact">
+            <button id="feedback-up" class="feedback-rating" type="button" aria-label="Thumbs up" aria-pressed="false"><span aria-hidden="true">👍</span><span>Looks good</span></button>
+            <button id="feedback-down" class="feedback-rating" type="button" aria-label="Thumbs down" aria-pressed="false"><span aria-hidden="true">👎</span><span>Needs work</span></button>
+          </div>
+          <div class="feedback-actions">
+            <button id="feedback-submit" class="primary-button" type="submit" disabled>Submit feedback</button>
+            <span id="feedback-status" class="muted" role="status"></span>
+          </div>
+        </form>
         <div id="feedback-lesson"></div>
       </section>
     </main>
 
-    <aside class="sidebar">
-      <section class="card">
-        <h2>Project context</h2>
-        <p class="hint">Scoped to your team and project. Highlighted items shaped the current brief.</p>
-        <h3>Sources</h3>
+    <aside class="sidebar" aria-label="Project context">
+      <section class="card context-card">
+        <div class="context-heading"><span class="context-icon" aria-hidden="true">◫</span><div><span class="eyebrow">WORKSPACE</span><h2>Project context</h2></div></div>
+        <p class="context-description">Sources help ground each build. Items used in the current prompt are highlighted.</p>
+        <div class="context-divider"></div>
+        <div class="context-subhead"><h3>Sources</h3><span class="context-subtle">PDF or text</span></div>
         <ul id="sources" class="items"></ul>
-        <details>
-          <summary>Add a source</summary>
-          <input id="src-title" placeholder="Title (optional; defaults to filename)">
-          <textarea id="src-text" rows="4" placeholder="Paste a spec or repo notes"></textarea>
-          <input id="src-file" type="file" accept=".pdf,.txt,application/pdf,text/plain" aria-label="Upload a PDF or text source">
-          <p class="hint">PDF or UTF-8 text file, maximum 10 MB.</p>
-          <button id="src-btn" class="secondary" type="button">Add source</button>
+        <details class="add-source">
+          <summary><span aria-hidden="true">＋</span> Add a source</summary>
+          <div class="source-form">
+            <label class="field-label" for="src-title">Title <span class="optional">Optional</span></label>
+            <input id="src-title" placeholder="Defaults to the file name">
+            <label class="field-label" for="src-scope">Visible to</label>
+            <select id="src-scope" aria-label="Source visibility"></select>
+            <label class="field-label" for="src-text">Source text</label>
+            <textarea id="src-text" rows="4" placeholder="Paste notes or a spec…"></textarea>
+            <label class="field-label" for="src-file">Or upload a file</label>
+            <input id="src-file" type="file" accept=".pdf,.txt,application/pdf,text/plain" aria-label="Upload a PDF or text source">
+            <p class="hint">PDF or UTF-8 text, up to 10 MB.</p>
+            <button id="src-btn" class="secondary" type="button">Add source</button>
+          </div>
         </details>
       </section>
+      <section class="card recent-card" aria-labelledby="recent-title">
+        <span class="eyebrow">PICK UP WHERE YOU LEFT OFF</span>
+        <h2 id="recent-title">Recent builds</h2>
+        <ul id="recent-runs" class="recent-runs"></ul>
+      </section>
+      <p class="sidebar-note">Source visibility follows the access you choose.</p>
     </aside>
   </div>
 
-  <div id="toast" class="toast hidden" role="status"></div>
-  <script type="module" src="app.js"></script>
+  <div id="toast" class="toast hidden" role="alert"></div>
+  <script type="module" src="app.js?v=7"></script>
 </body>
 </html>

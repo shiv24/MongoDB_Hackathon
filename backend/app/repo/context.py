@@ -1,4 +1,4 @@
-"""Sources (spec / repo snapshot chunks) and team decisions. Scoped by repo.scope.project_filter."""
+"""Scoped source chunks and project decisions."""
 from app import config
 from app.agent import embed
 from app.db import get_db, new_id, now
@@ -23,21 +23,32 @@ def chunk(text: str, size: int = config.CHUNK_CHARS) -> list[str]:
 
 # ---------- sources ----------
 
-def add_source(session: dict, project_id: str, title: str, text: str, kind: str = "spec") -> dict:
-    scope.require_project(session, project_id)
+def add_source(session: dict, project_id: str, title: str, text: str, kind: str = "spec",
+               scope_name: str = "project") -> dict:
+    scope.require_source_publish(session, project_id, scope_name)
     db = get_db()
-    existing = db.sources.find_one({"team_id": session["team_id"], "project_id": project_id, "title": title},
+    identity = {"team_id": session["team_id"], "title": title, "scope": scope_name}
+    if scope_name == "project":
+        identity["project_id"] = project_id
+    elif scope_name == "personal":
+        identity["owner_id"] = session["user_id"]
+    existing = db.sources.find_one(identity,
                                    sort=[("revision", -1)])
     source_id = existing["source_id"] if existing else new_id()
     revision = (existing["revision"] + 1) if existing else 1
     pieces = chunk(text)
     vectors = embed.documents([f"{title}\n\n{p}" for p in pieces])
-    docs = [{"_id": new_id(), "team_id": session["team_id"], "project_id": project_id, "source_id": source_id,
+    docs = [{"_id": new_id(), "team_id": session["team_id"], "project_id": project_id,
+             "scope": scope_name, "owner_id": session["user_id"], "source_id": source_id,
              "title": title, "kind": kind, "revision": revision, "chunk_index": i, "text": p, "embedding": v,
              "added_by": session["user_id"], "created_at": now()} for i, (p, v) in enumerate(zip(pieces, vectors))]
     if docs:
         db.sources.insert_many(docs)
-    return {"source_id": source_id, "title": title, "revision": revision, "chunks": len(docs)}
+        events.log_event("source", source_id, session["team_id"], "created", session["user_id"], "user",
+                         after={"title": title, "scope": scope_name, "project_id": project_id,
+                                "revision": revision, "chunks": len(docs)})
+    return {"source_id": source_id, "title": title, "scope": scope_name,
+            "revision": revision, "chunks": len(docs)}
 
 
 def latest_source_revision(team_id: str, source_id: str) -> int | None:
@@ -47,8 +58,8 @@ def latest_source_revision(team_id: str, source_id: str) -> int | None:
 
 def search_sources(session: dict, project_id: str, query_embedding: list[float],
                    limit: int = config.RETRIEVE_LIMIT) -> list[dict]:
-    hits = vector_search(get_db().sources, "sources_vector", query_embedding,
-                         scope.project_filter(session, project_id), limit * 2)
+    hits = vector_search(get_db().sources, "sources_scoped_vector", query_embedding,
+                         scope.source_filter(session, project_id), limit * 2)
     # keep only chunks from each source's latest revision
     latest = {}
     for h in hits:
@@ -58,9 +69,10 @@ def search_sources(session: dict, project_id: str, query_embedding: list[float],
 
 def list_sources(session: dict, project_id: str) -> list[dict]:
     pipeline = [
-        {"$match": {"team_id": session["team_id"], "project_id": project_id}},
+        {"$match": scope.source_filter(session, project_id)},
         {"$sort": {"revision": -1}},
         {"$group": {"_id": "$source_id", "title": {"$first": "$title"}, "kind": {"$first": "$kind"},
+                    "scope": {"$first": "$scope"}, "owner_id": {"$first": "$owner_id"},
                     "revision": {"$first": "$revision"}, "added_by": {"$first": "$added_by"}}},
         {"$sort": {"title": 1}},
     ]

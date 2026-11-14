@@ -112,6 +112,7 @@ The main screen is a place to delegate work and review the result.
 - **Project setup:** Supply a spec, relevant repository snapshot, and explicit decisions; review their source, owner, and scope. These establish the starting context before the first request.
 - **Request:** Choose a project, speak or type a request, and review the transcript.
 - **Context:** Inspect the selected sources, decisions, and preferences, with their attribution and scope.
+- **Sources:** Add text, PDF, or UTF-8 text files with Company, Project, or User (Personal) visibility. Alice is an admin in the demo; members can publish personal sources, publishers can also publish project sources, and admins can publish at all three levels.
 - **Brief:** PromptForge uses explicit assumptions instead of blocking questions; review the collapsible prompt if desired.
 - **Result:** Inspect the generated artifact and validation evidence. A failed or unrun check remains visible.
 - **Feedback:** Explain a correction and decide whether the proposed lesson should be remembered.
@@ -120,7 +121,7 @@ The brief should remain usable without an execution integration. Running it insi
 
 ## Hackathon scope
 
-The product direction is settled: **shared team context plus approved learning, with both brief export and model execution.** The implemented output is an optional HTML/CSS website preview; Markdown export supports external coding workflows.
+The product direction is settled: **shared team context plus approved learning, with both brief export and model execution.** The implemented output is an optional interactive website preview; Markdown export supports external coding workflows.
 
 ### First complete workflow
 
@@ -207,7 +208,7 @@ Keep the tunnel running. If the URL changes, rerun setup (it creates new agent/t
 - Runs are private to their creator, including derived personal context. Shared lessons remain available according to their approved scope.
 - Expired, retired, superseded, removed, or unauthorized cited memory blocks export/generation. Uncited requirements and invalid citations block export. Citation validation verifies references, not semantic truth.
 - OpenAI returns typed structured output. Requests have bounded output/context, timeouts, and no automatic OpenAI retries. Preview generation is locked per run, cached per brief revision, and rechecks memory after generation.
-- Website output is an HTML/CSS visual prototype. It is sanitized and rendered with an empty iframe sandbox plus a restrictive CSP. Scripts, external assets, network calls, and form submission are disabled. Backend features are not implemented by this preview.
+- Website output is a self-contained HTML/CSS/JavaScript prototype. Inline interactions run in an isolated iframe; external assets, network calls, and form submission are blocked. Backend features are not implemented by this preview, and generated behavior should be reviewed before relying on it.
 - Checks are user-reported. There is no claim of automatic functional correctness or complete erasure of previously exported content.
 - The demo login picker is simulated identity, not production authentication. Use synthetic demo data; replace demo login before real-team/public production use.
 - LangSmith tracing is optional. OpenAI usage is stored with model results; dollar spend depends on your configured models. Set provider-side spending limits for your budget.
@@ -222,7 +223,7 @@ node --check frontend/app.js
 pytest backend/tests/test_isolation.py -q
 ```
 
-Current offline result: **34 passed, 3 live Atlas tests skipped**. Browser automation was unavailable during this verification; perform the manual workflow below after setup.
+Current offline result: **40 passed, 3 live Atlas tests skipped**. A headless browser confirmed Alice sees the three source visibility choices; perform the full manual workflow below after setup.
 
 Offline tests cover API flow, scopes, lifecycle, private runs, stale/expired memory, explicit approval boundaries, direct generation with mocked providers, preview caching and sanitization. Live provider calls and real browser microphone/agent behavior still require credentials and a live smoke test.
 

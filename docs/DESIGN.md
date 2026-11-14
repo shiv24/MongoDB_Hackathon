@@ -6,15 +6,17 @@ The README defines setup and product behavior. This design supersedes the partne
 
 - Direct: typed request or ElevenLabs transcription → `/api/build` → Voyage + Atlas retrieval → OpenAI Responses structured brief → review.
 - Conversational: ElevenLabs Agent → scoped tool webhooks → saved brief → review. Browser SDK is loaded only when starting a conversation.
-- Both: recheck citations, permissions, expiry and revisions → Markdown export or OpenAI HTML/CSS preview → recorded outcomes → proposed lesson → UI approval.
+- Both: recheck citations, permissions, expiry and revisions → Markdown export or interactive OpenAI preview → recorded outcomes → proposed lesson → UI approval.
 
 ## Ownership
 
 `repo/scope.py` defines retrieval scope. Runs are owner-private because their provenance may contain personal lessons. Browser sessions and agent tokens reload current user memberships. Logout invalidates agent tokens. Team lessons require publisher/admin permission. The demo user picker is not production authentication.
 
+Sources use the same three visibility scopes before Atlas Vector Search: company (`team`) across a team, project within one project, and personal for one user across their projects. Any project member may add a personal source; publishers and admins may add project sources; only admins may add company sources. The demo Alice account is an admin. Existing sources without a scope are migrated to project scope. Source creation is recorded in the append-only memory event log.
+
 `agent/brief.py` parses citation keys; `agent/recheck.py` checks cited records before handoff. Direct requests receive immutable U1 provenance for explicit user instructions. Invalid citations or uncited constraints block export; semantic entailment is not proven automatically.
 
-`routes/build.py` owns direct briefs and preview generation. The generation lock prevents overlapping requests for one run. Cached previews belong to a brief revision; edits invalidate them. Generation uses no tools and never executes code. HTML is sanitized and rendered in a no-permissions iframe with restrictive CSP. Preview functionality is deliberately limited to static HTML/CSS.
+`routes/build.py` owns direct briefs and preview generation. The generation lock prevents overlapping requests for one run. Cached previews belong to a brief revision and artifact version; edits invalidate them. Generated HTML may include inline client-side JavaScript. It runs in an opaque-origin iframe with script permission, while CSP blocks network requests, external assets, and form submissions. The preview has no backend integration.
 
 `agent/llm.py` owns OpenAI calls: configurable models, bounded context/output, structured output, timeouts, no automatic retry, store=false. One failed request surfaces an actionable error. The frontend retries only on a new user action.
 

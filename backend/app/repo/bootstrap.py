@@ -8,7 +8,7 @@ DEFAULT_USER = {
     "name": "Alice",
     "team_id": "team_a",
     "project_ids": ["lumen-signup"],
-    "role": "publisher",
+    "role": "admin",
 }
 
 DEFAULT_PROJECT = {
@@ -22,8 +22,9 @@ def ensure_demo_workspace() -> dict[str, bool]:
     """Create the fixed demo identity and project only when they do not exist."""
     db = get_db()
     user = db.users.update_one(
-        {"_id": DEFAULT_USER["_id"]},
-        {"$setOnInsert": DEFAULT_USER},
+        {"_id": DEFAULT_USER["_id"], "team_id": DEFAULT_USER["team_id"]},
+        {"$setOnInsert": {k: v for k, v in DEFAULT_USER.items() if k != "role"},
+         "$set": {"role": DEFAULT_USER["role"]}},
         upsert=True,
     )
     project = db.projects.update_one(
@@ -31,4 +32,6 @@ def ensure_demo_workspace() -> dict[str, bool]:
         {"$setOnInsert": DEFAULT_PROJECT},
         upsert=True,
     )
+    # Older sources had no scope; they belonged to their original project.
+    db.sources.update_many({"scope": {"$exists": False}}, {"$set": {"scope": "project"}})
     return {"user_created": user.upserted_id is not None, "project_created": project.upserted_id is not None}

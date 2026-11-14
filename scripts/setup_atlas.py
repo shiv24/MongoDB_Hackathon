@@ -42,7 +42,7 @@ def vector_index(name, filters):
 
 
 VECTOR_INDEXES = {
-    "sources": vector_index("sources_vector", ["team_id", "project_id"]),
+    "sources": vector_index("sources_scoped_vector", ["team_id", "project_id", "scope", "owner_id"]),
     "decisions": vector_index("decisions_vector", ["team_id", "project_id", "status"]),
     "lessons": vector_index("lessons_vector", ["team_id", "project_id", "owner_id", "scope", "status"]),
 }

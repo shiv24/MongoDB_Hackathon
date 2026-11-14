@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 from app import config
 from app.agent import embed
 from app.main import app
-from app.repo import context, lessons
+from app.repo import context, lessons, scope
 from app.routes import projects, voice
 
 SPEC = "Required fields: work email, full name, password."
@@ -15,19 +15,19 @@ SPEC = "Required fields: work email, full name, password."
 @pytest.fixture
 def client(db, monkeypatch):
     db.users.insert_many([
-        {"_id": "alice", "name": "Alice", "team_id": "team_a", "project_ids": ["signup"], "role": "publisher"},
+        {"_id": "alice", "name": "Alice", "team_id": "team_a", "project_ids": ["signup"], "role": "admin"},
         {"_id": "bob", "name": "Bob", "team_id": "team_a", "project_ids": ["signup"], "role": "member"},
         {"_id": "carol", "name": "Carol", "team_id": "team_b", "project_ids": ["orbit"], "role": "admin"}])
     db.projects.insert_many([{"_id": "signup", "team_id": "team_a", "name": "Signup"},
                              {"_id": "orbit", "team_id": "team_b", "name": "Orbit"}])
     db.sources.insert_one({"_id": "c1", "team_id": "team_a", "project_id": "signup", "source_id": "spec",
                            "title": "Signup spec", "kind": "spec", "revision": 1, "chunk_index": 0, "text": SPEC,
-                           "added_by": "alice"})
-    context.add_decision({"user_id": "alice", "team_id": "team_a", "project_ids": ["signup"], "role": "publisher"},
+                           "scope": "project", "owner_id": "alice", "added_by": "alice"})
+    context.add_decision({"user_id": "alice", "team_id": "team_a", "project_ids": ["signup"], "role": "admin"},
                          "signup", "Use the Lumen ID service.")
 
     monkeypatch.setattr(context, "search_sources", lambda s, p, v, limit=6: [
-        {**d, "score": 0.9} for d in db.sources.find({"team_id": s["team_id"], "project_id": p})])
+        {**d, "score": 0.9} for d in db.sources.find(scope.source_filter(s, p)).limit(limit)])
     monkeypatch.setattr(context, "search_decisions", lambda s, p, v, limit=6: [
         {**d, "score": 0.9} for d in db.decisions.find({"team_id": s["team_id"], "project_id": p, "status": "current"})])
 
@@ -70,24 +70,89 @@ def test_file_upload_uses_existing_scoped_ingestion(client, db, monkeypatch):
 
     monkeypatch.setattr(projects, "PdfReader", Reader)
     client.post("/api/login", json={"user_id": "alice"})
-    response = client.post("/api/projects/signup/sources/file", data={"title": "", "text": "Uploaded by Alice."},
+    response = client.post("/api/projects/signup/sources/file", data={"title": "", "text": "Uploaded by Alice.", "scope": "team"},
                            files={"file": ("accessibility.pdf", b"%PDF-1.7 test", "application/pdf")})
 
     assert response.status_code == 200
     assert response.json()["title"] == "accessibility"
     saved = db.sources.find_one({"project_id": "signup", "title": "accessibility"})
-    assert saved["kind"] == "pdf" and "keyboard" in saved["text"] and "Uploaded by Alice" in saved["text"]
+    assert saved["kind"] == "pdf" and saved["scope"] == "team"
+    assert "keyboard" in saved["text"] and "Uploaded by Alice" in saved["text"]
 
     text_response = client.post("/api/projects/signup/sources/file", data={"title": "Plain notes"},
                                 files={"file": ("notes.txt", b"Use the shared FormField component.", "text/plain")})
     assert text_response.status_code == 200
     text_source = db.sources.find_one({"project_id": "signup", "title": "Plain notes"})
-    assert text_source["kind"] == "text" and "FormField" in text_source["text"]
+    assert text_source["kind"] == "text" and text_source["scope"] == "project" and "FormField" in text_source["text"]
+
+    client.post("/api/login", json={"user_id": "bob"})
+    denied = client.post("/api/projects/signup/sources/file", data={"scope": "team"},
+                         files={"file": ("restricted.txt", b"Private", "text/plain")})
+    assert denied.status_code == 403
 
     client.post("/api/login", json={"user_id": "carol"})
     forbidden = client.post("/api/projects/signup/sources/file",
                             files={"file": ("other.pdf", b"%PDF-1.7 test", "application/pdf")})
     assert forbidden.status_code == 403
+
+
+def test_source_scopes_are_enforced_for_reads_writes_and_retrieval(client, db, monkeypatch):
+    db.projects.insert_one({"_id": "billing", "team_id": "team_a", "name": "Billing"})
+    db.users.update_one({"_id": "alice"}, {"$addToSet": {"project_ids": "billing"}})
+    alice = {"user_id": "alice", "team_id": "team_a", "project_ids": ["signup", "billing"], "role": "admin"}
+
+    client.post("/api/login", json={"user_id": "alice"})
+    company = client.post("/api/projects/signup/sources", json={
+        "title": "Shared title", "text": "Company-wide guidance", "scope": "team"}).json()
+    project = client.post("/api/projects/signup/sources", json={
+        "title": "Shared title", "text": "Signup-only guidance", "scope": "project"}).json()
+    personal = client.post("/api/projects/signup/sources", json={
+        "title": "Private notes", "text": "Alice-only guidance", "scope": "personal"}).json()
+    assert company["scope"] == "team" and company["source_id"] != project["source_id"]
+    assert db.sources.find_one({"source_id": personal["source_id"]})["owner_id"] == "alice"
+    assert db.memory_events.count_documents({"record_type": "source", "event": "created"}) == 3
+
+    assert {s["source_id"] for s in context.search_sources(alice, "billing", [0.1])} >= {
+        company["source_id"], personal["source_id"]}
+    assert project["source_id"] not in {
+        s["source_id"] for s in context.search_sources(alice, "billing", [0.1])}
+
+    billing_ids = {s["source_id"] for s in client.get("/api/projects/billing/context").json()["sources"]}
+    assert company["source_id"] in billing_ids and personal["source_id"] in billing_ids
+    assert project["source_id"] not in billing_ids
+
+    client.post("/api/login", json={"user_id": "bob"})
+    bob_ids = {s["source_id"] for s in client.get("/api/projects/signup/context").json()["sources"]}
+    assert company["source_id"] in bob_ids and project["source_id"] in bob_ids
+    assert personal["source_id"] not in bob_ids
+    for visibility in ("team", "project"):
+        denied = client.post("/api/projects/signup/sources", json={
+            "title": "Unauthorized", "text": "Cannot publish", "scope": visibility})
+        assert denied.status_code == 403
+    own = client.post("/api/projects/signup/sources", json={
+        "title": "Bob's notes", "text": "Private to Bob", "scope": "personal"})
+    assert own.status_code == 200
+    assert own.json()["source_id"] not in {
+        s["source_id"] for s in context.list_sources(alice, "signup")}
+
+    client.post("/api/login", json={"user_id": "carol"})
+    assert company["source_id"] not in {
+        s["source_id"] for s in client.get("/api/projects/orbit/context").json()["sources"]}
+    assert client.post("/api/projects/signup/sources", json={
+        "title": "Wrong team", "text": "No access", "scope": "team"}).status_code == 403
+
+
+def test_publisher_can_add_project_source_but_not_company_source(client, db):
+    db.users.update_one({"_id": "bob"}, {"$set": {"role": "publisher"}})
+    client.post("/api/login", json={"user_id": "bob"})
+    project = client.post("/api/projects/signup/sources", json={
+        "title": "Publisher notes", "text": "Project guidance", "scope": "project"})
+    assert project.status_code == 200
+    assert db.sources.find_one({"source_id": project.json()["source_id"]})["scope"] == "project"
+    company = client.post("/api/projects/signup/sources", json={
+        "title": "Company notes", "text": "Company guidance", "scope": "team"})
+    assert company.status_code == 403
+    assert db.sources.find_one({"title": "Company notes"}) is None
 
 
 def test_tools_reject_missing_or_bad_token(client):

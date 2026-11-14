@@ -9,7 +9,7 @@ from app.repo import runs, lessons, agent_sessions
 from app.repo.bootstrap import DEFAULT_PROJECT, DEFAULT_USER, ensure_demo_workspace
 from app.db import now
 from app.errors import Conflict, NotFound, NotLoggedIn
-from app.routes.build import safe_html
+from app.routes.build import safe_html, validate_interactive_html
 from conftest import ALICE, BOB
 
 
@@ -19,10 +19,13 @@ def test_demo_workspace_bootstrap_is_idempotent(db):
     assert db.users.find_one({"_id": "alice"}) == DEFAULT_USER
     assert db.projects.find_one({"_id": "lumen-signup"}) == DEFAULT_PROJECT
 
-    db.users.update_one({"_id": "alice"}, {"$set": {"name": "Existing Alice"}})
+    db.users.update_one({"_id": "alice"}, {"$set": {"name": "Existing Alice", "role": "member"}})
+    db.sources.insert_one({"_id": "old-source", "team_id": "team_a", "project_id": "lumen-signup"})
     second = ensure_demo_workspace()
     assert second == {"user_created": False, "project_created": False}
     assert db.users.find_one({"_id": "alice"})["name"] == "Existing Alice"
+    assert db.users.find_one({"_id": "alice"})["role"] == "admin"
+    assert db.sources.find_one({"_id": "old-source"})["scope"] == "project"
 
 
 def test_personal_provenance_does_not_leak_through_runs(db):
@@ -52,10 +55,14 @@ def test_token_rechecks_membership(db):
     with pytest.raises(NotLoggedIn): agent_sessions.resolve(token)
 
 
-def test_preview_removes_active_content():
-    out=safe_html('<script>alert(1)</script><a href="https://evil">x</a><img onerror="alert(1)" src="https://evil"><iframe srcdoc="x"></iframe>')
-    assert '<script' not in out and '<iframe' not in out and 'onerror' not in out and 'https://evil' not in out
-    assert "default-src 'none'" in out
+def test_preview_keeps_inline_behavior_but_blocks_external_resources():
+    out=safe_html('<button id="key">7</button><script>document.querySelector("#key").addEventListener("click", () => {})</script><script src="https://evil/script.js"></script><a href="https://evil">x</a><img onerror="alert(1)" src="https://evil"><iframe srcdoc="x"></iframe>')
+    assert 'addEventListener' in out and '<iframe' not in out
+    assert 'onerror' not in out and 'https://evil' not in out
+    assert "default-src 'none'" in out and "connect-src 'none'" in out
+    with pytest.raises(ValueError, match='no client-side behavior'):
+        validate_interactive_html('<button>7</button>')
+    validate_interactive_html('<button id="key">7</button><script>document.querySelector("#key").addEventListener("click", () => {})</script>')
 
 
 def test_direct_build_preview_and_cache(db,monkeypatch):
@@ -79,7 +86,12 @@ def test_direct_build_preview_and_cache(db,monkeypatch):
     for _ in range(2):
         result=c.post(f'/api/build/{rid}/preview');assert result.status_code==200,result.text
         assert '<h1>Signup</h1>' in result.json()['artifact']['html']
+        assert result.json()['artifact']['version'] == 2
     assert len(calls)==1
+    db.runs.update_one({'_id': rid}, {'$set': {'artifact.version': 1}})
+    regenerated=c.post(f'/api/build/{rid}/preview')
+    assert regenerated.status_code == 200 and regenerated.json()['artifact']['version'] == 2
+    assert len(calls)==2
     assert c.get('/').status_code==200
 
 

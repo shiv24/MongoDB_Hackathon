@@ -5,7 +5,8 @@
 const $ = (id) => document.getElementById(id);
 const DEFAULT_USER_ID = "alice";
 const DEFAULT_PROJECT_ID = "lumen-signup";
-const state = { me: null, projectId: null, run: null, context: null, previewing: false, feedbackRunId: null };
+const state = { me: null, projectId: null, run: null, context: null, recentRuns: [], building: false, previewing: false, feedbackRunId: null,
+  previewArtifact: null, feedbackRating: null, feedbackSubmitting: false, feedbackSubmitted: false };
 
 // ---------- helpers ----------
 async function api(path, opts = {}) {
@@ -42,6 +43,7 @@ async function busy(btn, label, fn) {
 
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
 const chip = (text) => el("span", { class: `chip ${text}` }, String(text).replace(/_/g, " "));
+const hasSavedArtifact = (run) => !!run?.artifact && run.artifact.brief_revision === run.brief_revision && run.status !== 'stale';
 
 // ---------- fixed demo identity and project ----------
 async function init() {
@@ -51,7 +53,20 @@ async function init() {
   if (!project) throw new Error(`Default project ${DEFAULT_PROJECT_ID} is not available to ${DEFAULT_USER_ID}. Seed the demo data first.`);
   state.projectId = project._id;
   $("active-context").textContent = `${state.me.name} · ${project.name}`;
+  const choices = [["personal", "User (Personal)"]];
+  if (["publisher", "admin"].includes(state.me.role)) choices.push(["project", "Project"]);
+  if (state.me.role === "admin") choices.push(["team", "Company"]);
+  $("src-scope").replaceChildren(...choices.map(([value, label]) => el("option", { value }, label)));
+  $("src-scope").value = choices.some(([value]) => value === "project") ? "project" : "personal";
   await loadContext();
+}
+
+async function openRun(runId) {
+  state.run = await api(`/runs/${runId}`);
+  $('type-input').value = state.run.request;
+  renderRun();
+  renderContext();
+  renderRecentRuns();
 }
 
 // ---------- direct request and optional microphone ----------
@@ -62,14 +77,33 @@ async function submitRequest(clarification = '') {
   const request = clarification && state.run ? state.run.request : $('type-input').value.trim();
   if (!request) throw new Error('Describe what you want built.');
   const answers = clarification ? (state.run?.clarification_text || '') + '\n' + clarification : '';
-  state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers}});
-  renderRun(); await loadContext();
-  if (state.run.status === 'draft') await generatePreview();
+  if (!clarification) {
+    state.run = null;
+    state.feedbackRunId = null;
+    $('brief-details').open = false;
+    $('brief').replaceChildren();
+    renderRecentRuns();
+  }
+  state.building = true;
+  renderRun();
+  try {
+    state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers}});
+    renderRun();
+    await loadContext();
+    if (state.run.status === 'draft') await generatePreview();
+  } finally {
+    state.building = false;
+    renderRun();
+  }
 }
 function tell(text) { busy($('send-btn'), 'Updating…', () => submitRequest(text)); }
 $('send-btn').addEventListener('click', e => busy(e.target, 'Building artifact…', () => submitRequest()));
-$('type-input').addEventListener('keydown', e => { if(e.key === 'Enter') $('send-btn').click(); });
-$('type-btn').addEventListener('click', () => $('type-input').focus());
+$('type-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    $('send-btn').click();
+  }
+});
 $('talk-btn').addEventListener('click', async () => {
   try {
     if (recording && recording.state === 'recording') { recording.stop(); return; }
@@ -81,7 +115,8 @@ $('talk-btn').addEventListener('click', async () => {
     recording.ondataavailable = e => parts.push(e.data);
     recording.onstop = async () => {
       stream.getTracks().forEach(t=>t.stop());
-      $('talk-btn').textContent='🎙 Record request';
+      $('talk-btn').querySelector('span').textContent = 'Record';
+      $('talk-btn').setAttribute('aria-label', 'Record request');
       try {
         const form=new FormData(); form.append('audio',new Blob(parts,{type:recorder.mimeType}),'request.webm');
         const response=await fetch('/api/voice/transcribe',{method:'POST',body:form});
@@ -90,7 +125,8 @@ $('talk-btn').addEventListener('click', async () => {
         $('type-input').value=result.text; toast('Review the transcript, then build the artifact.');
       } catch(e) { toast(e.message); }
     };
-    recording.start(); $('talk-btn').textContent='Stop recording';
+    recording.start(); $('talk-btn').querySelector('span').textContent = 'Stop recording';
+    $('talk-btn').setAttribute('aria-label', 'Stop recording');
     setTimeout(()=>{if(recorder.state==='recording')recorder.stop();},60000);
   } catch(e) { toast('Microphone unavailable. You can type your request.'); }
 });
@@ -106,16 +142,37 @@ async function generatePreview() {
   } finally {
     state.previewing = false;
     renderRun();
+    await loadContext();
   }
 }
 
 $('generate-btn').addEventListener('click', e => busy(e.target, 'Generating preview…', generatePreview));
+$('upgrade-btn').addEventListener('click', e => busy(e.target, 'Rebuilding…', generatePreview));
+$('upgrade-inline-btn').addEventListener('click', e => busy(e.target, 'Rebuilding…', generatePreview));
 
 // ---------- project context sidebar ----------
 async function loadContext() {
   if (!state.projectId) return;
   state.context = await api(`/projects/${state.projectId}/context`);
   renderContext();
+  const candidates = state.context.runs.filter((run) => ['exported', 'reviewed'].includes(run.status)).slice(0, 10);
+  state.recentRuns = (await Promise.all(candidates.map(async (run) => {
+    try { return await api(`/runs/${run._id}`); }
+    catch { return null; }
+  }))).filter(Boolean);
+  renderRecentRuns();
+}
+
+function renderRecentRuns() {
+  const runs = state.recentRuns;
+  const list = $('recent-runs');
+  list.replaceChildren(...runs.filter(hasSavedArtifact)
+    .slice(0, 6).map((run) => el('li', {},
+      el('button', { class: state.run?._id === run._id ? 'recent-run active' : 'recent-run',
+        type: 'button', onclick: (event) => busy(event.currentTarget, 'Opening…', () => openRun(run._id)) },
+      el('span', { class: 'recent-run-title' }, run.request),
+      el('span', { class: 'recent-run-meta' }, run.artifact.version === 2 ? 'View artifact ↗' : 'Update preview ↗')))));
+  if (!list.childElementCount) list.append(el('li', { class: 'muted' }, 'Your builds will appear here.'));
 }
 
 function usedIds() {
@@ -130,7 +187,8 @@ function renderContext() {
   const c = state.context; if (!c) return;
   const used = usedIds();
   $("sources").replaceChildren(...c.sources.map((s) => el("li", { class: used.has(s.source_id) ? "used" : "" },
-    el("span", { class: "text" }, s.title), el("span", { class: "meta" }, `${s.kind} · revision ${s.revision} · added by ${s.added_by}`))));
+    el("span", { class: "text" }, s.title), el("span", { class: "meta" },
+      `${s.scope === "team" ? "Company" : s.scope === "personal" ? "Personal" : "Project"} · ${s.kind} · revision ${s.revision} · added by ${s.added_by}`))));
   if (!c.sources.length) $("sources").append(el("li", { class: "muted" }, "No sources yet."));
 }
 
@@ -138,21 +196,23 @@ $("src-btn").addEventListener("click", (e) => busy(e.target, "Adding…", async 
   const title = $("src-title").value.trim();
   const text = $("src-text").value.trim();
   const file = $("src-file").files[0];
+  const sourceScope = $("src-scope").value;
   if (!file && !text) throw new Error("Paste source text or choose a PDF or text file.");
   if (file) {
     const body = new FormData();
     body.append("title", title);
     body.append("text", text);
+    body.append("scope", sourceScope);
     body.append("file", file);
     await api(`/projects/${state.projectId}/sources/file`, { method: "POST", body });
   } else {
     await api(`/projects/${state.projectId}/sources`, {
-      method: "POST", body: { title: title || "Pasted source", text },
+      method: "POST", body: { title: title || "Pasted source", text, scope: sourceScope },
     });
   }
   $("src-title").value = ""; $("src-text").value = ""; $("src-file").value = "";
   await loadContext();
-  toast("Source added to project context.");
+  toast("Source added.");
 }));
 // ---------- brief ----------
 const SECTIONS = [["requirements", "Requirements"], ["current_decisions", "Current decisions"], ["implementation_context", "Implementation context"],
@@ -162,7 +222,7 @@ function citeChips(keys) {
   const prov = Object.fromEntries((state.run.provenance || []).map((e) => [e.key, e]));
   return (keys || []).map((k) => {
     const e = prov[k]; if (!e) return null;
-    const label = e.type === "user" ? "Your explicit request or clarification" : e.type === "source" ? `Source "${e.title}" rev ${e.revision}` : e.type === "decision" ? `Team decision rev ${e.revision} (owner ${e.owner_id})` : `Approved ${e.scope} lesson rev ${e.revision}`;
+    const label = e.type === "user" ? "Your explicit request or clarification" : e.type === "source" ? `${e.scope === "team" ? "Company" : e.scope === "personal" ? "Personal" : "Project"} source "${e.title}" rev ${e.revision}` : e.type === "decision" ? `Team decision rev ${e.revision} (owner ${e.owner_id})` : `Approved ${e.scope} lesson rev ${e.revision}`;
     return el("span", { class: "cite", title: `${label}\n\n${e.text}` }, k);
   });
 }
@@ -171,24 +231,48 @@ function renderRun() {
   const r = state.run;
   const hasBrief = !!r?.brief;
   show("brief-card", hasBrief);
-  const hasPreview = !!r?.artifact && r.artifact.brief_revision === r.brief_revision && r.status !== 'stale';
-  show("feedback-card", hasPreview);
-  if (hasPreview && state.feedbackRunId !== r._id) {
+  const hasPreview = hasSavedArtifact(r);
+  const legacyPreview = hasPreview && r.artifact.version !== 2;
+  const preview = hasPreview && !legacyPreview ? r.artifact : null;
+  if (preview && (state.previewArtifact?.runId !== r._id || state.previewArtifact?.html !== preview.html || state.previewArtifact?.revision !== r.brief_revision)) {
+    const artifact = { runId: r._id, html: preview.html, revision: r.brief_revision, loaded: false };
+    state.previewArtifact = artifact;
+    state.feedbackRunId = null;
+    // A fresh frame keeps old load events from revealing feedback for a new artifact.
+    const frame = $("preview-frame").cloneNode(false);
+    frame.addEventListener("load", () => {
+      if (state.previewArtifact !== artifact) return;
+      artifact.loaded = true;
+      renderFeedbackVisibility();
+    }, { once: true });
+    frame.srcdoc = preview.html;
+    $("preview-frame").replaceWith(frame);
+  } else if (!preview && state.previewArtifact) {
+    state.previewArtifact = null;
+    $("preview-frame").srcdoc = "";
+  }
+  renderFeedbackVisibility();
+  if (hasPreview && !legacyPreview && state.feedbackRunId !== r._id) {
     state.feedbackRunId = r._id;
+    state.feedbackRating = null;
+    state.feedbackSubmitted = false;
     $("feedback-text").value = "";
     $("feedback-up").setAttribute("aria-pressed", "false");
     $("feedback-down").setAttribute("aria-pressed", "false");
     $("feedback-status").textContent = "";
     $("feedback-lesson").replaceChildren();
+    renderFeedbackControls();
   }
-  show('preview-card', state.previewing || hasPreview);
-  $('preview-status').textContent = state.previewing ? 'Building preview…' : hasPreview ? 'Preview ready' : '';
-  if (hasPreview) $('preview-frame').srcdoc = r.artifact.html;
-  else if (!state.previewing) $('preview-frame').srcdoc = '';
+  show('preview-card', state.building || state.previewing || hasPreview);
+  show('upgrade-btn', legacyPreview && !state.previewing);
+  show('preview-legacy', legacyPreview && !state.previewing);
+  show('preview-empty', ((state.building || state.previewing) && !hasPreview) || (state.previewing && legacyPreview));
+  show('preview-frame', hasPreview && !legacyPreview);
+  $('preview-status').textContent = state.previewing ? 'Building preview…' : state.building ? 'Preparing prompt…' : legacyPreview ? 'Update needed' : hasPreview ? 'Preview ready' : '';
   show('handoff', false);
   if (!hasBrief) return;
   $("run-status").replaceChildren(chip(r.status));
-  $("brief-rev").textContent = r.brief_revision ? `revision ${r.brief_revision} by the agent` : "";
+  $("brief-rev").textContent = r.brief_revision ? `Rev ${r.brief_revision}` : "";
   if (["needs_answers", "stale"].includes(r.status)) $("brief-details").open = true;
   else if (state.previewing || hasPreview) $("brief-details").open = false;
 
@@ -245,21 +329,65 @@ $("export-btn").addEventListener("click", (e) => busy(e.target, "Rechecking memo
 }));
 
 // ---------- simple artifact feedback ----------
-async function submitFeedback(rating) {
-  const comment = $("feedback-text").value.trim();
-  const label = rating === "up" ? "Thumbs up" : "Thumbs down";
-  const text = comment ? `${label}: ${comment}` : label;
-  const result = await api(`/runs/${state.run._id}/feedback`, {
-    method: "POST", body: { text, propose_lesson: Boolean(comment) },
-  });
-  $("feedback-up").setAttribute("aria-pressed", String(rating === "up"));
-  $("feedback-down").setAttribute("aria-pressed", String(rating === "down"));
-  $("feedback-status").textContent = "Thanks for the feedback.";
-  renderFeedbackLesson(result);
+function renderFeedbackVisibility() {
+  show("feedback-card", state.previewArtifact?.loaded && hasSavedArtifact(state.run)
+    && state.previewArtifact.runId === state.run._id && !state.building && !state.previewing);
 }
 
-$("feedback-up").addEventListener("click", (e) => busy(e.currentTarget, "Saving…", () => submitFeedback("up")));
-$("feedback-down").addEventListener("click", (e) => busy(e.currentTarget, "Saving…", () => submitFeedback("down")));
+function renderFeedbackControls() {
+  for (const rating of ["up", "down"]) {
+    $(`feedback-${rating}`).setAttribute("aria-pressed", String(state.feedbackRating === rating));
+    $(`feedback-${rating}`).disabled = state.feedbackSubmitting;
+  }
+  $("feedback-text").disabled = state.feedbackSubmitting;
+  $("feedback-submit").disabled = state.feedbackSubmitting || state.feedbackSubmitted
+    || (!state.feedbackRating && !$("feedback-text").value.trim());
+  $("feedback-submit").textContent = state.feedbackSubmitting ? "Submitting…" : "Submit feedback";
+}
+
+function feedbackChanged() {
+  state.feedbackSubmitted = false;
+  $("feedback-status").textContent = "";
+  renderFeedbackControls();
+}
+
+async function submitFeedback() {
+  if (state.feedbackSubmitting || state.feedbackSubmitted || !state.previewArtifact?.loaded || state.building || state.previewing) return;
+  const comment = $("feedback-text").value.trim();
+  if (!state.feedbackRating && !comment) return;
+  const label = state.feedbackRating === "up" ? "Thumbs up" : state.feedbackRating === "down" ? "Thumbs down" : "";
+  const text = [label, comment].filter(Boolean).join(": ");
+  const artifact = state.previewArtifact;
+  state.feedbackSubmitting = true;
+  $("feedback-status").textContent = "";
+  renderFeedbackControls();
+  try {
+    const result = await api(`/runs/${artifact.runId}/feedback`, {
+      method: "POST", body: { text, propose_lesson: Boolean(comment) },
+    });
+    if (state.previewArtifact !== artifact) return;
+    state.feedbackSubmitted = true;
+    $("feedback-status").textContent = "Thanks for the feedback.";
+    renderFeedbackLesson(result);
+  } catch (err) {
+    if (state.previewArtifact === artifact) $("feedback-status").textContent = `Could not submit feedback: ${err.message}. Please try again.`;
+  } finally {
+    state.feedbackSubmitting = false;
+    renderFeedbackControls();
+  }
+}
+
+for (const rating of ["up", "down"]) {
+  $(`feedback-${rating}`).addEventListener("click", () => {
+    state.feedbackRating = state.feedbackRating === rating ? null : rating;
+    feedbackChanged();
+  });
+}
+$("feedback-text").addEventListener("input", feedbackChanged);
+$("feedback-form").addEventListener("submit", (event) => {
+  event.preventDefault();
+  submitFeedback();
+});
 
 function renderFeedbackLesson(result) {
   const box = $("feedback-lesson");

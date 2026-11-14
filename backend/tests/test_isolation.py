@@ -9,7 +9,7 @@ from app import config
 pytestmark = pytest.mark.skipif(not (config.MONGODB_URI and config.VOYAGE_API_KEY),
                                 reason="needs MONGODB_URI + VOYAGE_API_KEY and seeded fixtures")
 
-ALICE = {"user_id": "alice", "team_id": "team_a", "project_ids": ["lumen-signup", "lumen-billing"], "role": "publisher"}
+ALICE = {"user_id": "alice", "team_id": "team_a", "project_ids": ["lumen-signup", "lumen-billing"], "role": "admin"}
 BOB = {"user_id": "bob", "team_id": "team_a", "project_ids": ["lumen-signup"], "role": "member"}
 CAROL = {"user_id": "carol", "team_id": "team_b", "project_ids": ["orbit-signup"], "role": "admin"}
 
