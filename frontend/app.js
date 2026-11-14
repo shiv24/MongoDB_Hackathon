@@ -64,11 +64,11 @@ async function submitRequest(clarification = '') {
   const answers = clarification ? (state.run?.clarification_text || '') + '\n' + clarification : '';
   state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers}});
   renderRun(); await loadContext();
-  if (state.run.status === 'draft') await generatePreview();
+
 }
 function tell(text) { busy($('send-btn'), 'Updating…', () => submitRequest(text)); }
-$('send-btn').addEventListener('click', e => busy(e.target, 'Building artifact…', () => submitRequest()));
-$('type-input').addEventListener('keydown', e => { if(e.key === 'Enter') $('send-btn').click(); });
+$('send-btn').addEventListener('click', e => busy(e.target, 'Forging prompt…', () => submitRequest()));
+$('type-input').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('send-btn').click(); });
 $('type-btn').addEventListener('click', () => $('type-input').focus());
 $('talk-btn').addEventListener('click', async () => {
   try {
@@ -172,7 +172,7 @@ function renderRun() {
   const hasBrief = !!r?.brief;
   show("brief-card", hasBrief);
   const hasPreview = !!r?.artifact && r.artifact.brief_revision === r.brief_revision && r.status !== 'stale';
-  show("feedback-card", hasPreview);
+  show("feedback-card", hasBrief);
   if (hasPreview && state.feedbackRunId !== r._id) {
     state.feedbackRunId = r._id;
     $("feedback-text").value = "";
@@ -190,7 +190,7 @@ function renderRun() {
   $("run-status").replaceChildren(chip(r.status));
   $("brief-rev").textContent = r.brief_revision ? `revision ${r.brief_revision} by the agent` : "";
   if (["needs_answers", "stale"].includes(r.status)) $("brief-details").open = true;
-  else if (state.previewing || hasPreview) $("brief-details").open = false;
+  else $("brief-details").open = true;
 
   show("stale", r.status === "stale");
   if (r.status === "stale") {
@@ -200,6 +200,19 @@ function renderRun() {
   }
 
   const b = r.brief;
+  const contributions = [];
+  const provenance = Object.fromEntries((r.provenance || []).map(e => [e.key, e]));
+  for (const section of ['current_decisions', 'requirements', 'preferences']) {
+    for (const item of b[section] || []) {
+      const evidence = (item.sources || []).map(k => provenance[k]).filter(e => e && e.type !== 'user');
+      if (!evidence.length || contributions.some(c => c.text === item.text)) continue;
+      contributions.push({text: item.text, evidence});
+    }
+  }
+  $('contributions').replaceChildren(el('p', {class:'contribution-heading'}, contributions.length ? 'What your team brought to this prompt' : 'Add team sources to enrich your next prompt'),
+    ...contributions.slice(0, 4).map(c => el('details', {class:'contribution'},
+      el('summary', {}, c.text), ...c.evidence.map(e => el('p', {}, `${e.title || (e.type === 'decision' ? 'Team decision' : 'Approved lesson')} · revision ${e.revision}: ${e.text}`)))));
+
   const root = $("brief"); root.replaceChildren();
   root.append(el("div", { class: "brief-section" }, el("h3", {}, "Objective"), el("p", { contenteditable: "true", "data-path": "objective" }, b.objective)));
   for (const [key, title] of SECTIONS) {
@@ -267,13 +280,14 @@ function renderFeedbackLesson(result) {
   if (!result.proposed) return;
 
   const lesson = result.proposed;
-  const scope = (result.scopes_allowed || []).includes("project") ? "project" : "personal";
+  const scopePicker = el('select', {'aria-label':'Who should remember this lesson?'},
+    ...(result.scopes_allowed || ['personal']).map(s => el('option', {value:s}, {personal:'Just me',project:'This project',team:'Whole team'}[s])));
   const text = el("textarea", { rows: 2, "aria-label": "Suggested lesson" });
   text.value = lesson.text;
   box.append(el("div", { class: "generated-lesson" },
     el("strong", {}, "Suggested lesson"),
     el("p", { class: "hint" }, "Generated from your feedback. Review it before saving."),
-    text,
+    text, scopePicker,
     el("div", { class: "row" },
       el("button", { class: "secondary", onclick: (event) => busy(event.currentTarget, "Dismissing…", async () => {
         await api(`/lessons/${lesson._id}/reject`, { method: "POST" });
@@ -282,6 +296,7 @@ function renderFeedbackLesson(result) {
       }) }, "Dismiss"),
       el("span", { class: "spacer" }),
       el("button", { onclick: (event) => busy(event.currentTarget, "Saving…", async () => {
+        const scope = scopePicker.value;
         await api(`/lessons/${lesson._id}/approve`, { method: "POST", body: { scope, text: text.value.trim() } });
         box.replaceChildren();
         $("feedback-status").textContent = scope === "project" ? "Lesson saved for this project." : "Lesson saved for you.";

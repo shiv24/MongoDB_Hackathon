@@ -30,7 +30,7 @@ Preferences never override requirements or decisions.
 Do not ask clarifying or blocking questions. Choose a reasonable, conservative default for unspecified details and record it in assumptions.
 If context conflicts, follow explicit requirements and current decisions; document the choice as an assumption. Keep blocking_questions and other_questions empty.
 Do not invent existing interfaces or files. Include concrete acceptance checks.
-Return all fields, using empty lists where appropriate. Do not claim checks ran.'''
+Before returning, check coverage of every relevant requirement, current decision, dependency and approved lesson in the supplied context. Include observable acceptance criteria. Do not pad the brief with generic advice. Distinguish verified implementation details from assumptions. Return all fields, using empty lists where appropriate. Do not claim checks ran.'''
 
 @traceable(name="promptforge.openai", process_inputs=lambda _: {}, process_outputs=lambda _: {})
 def call(schema, instructions, data, model, max_tokens):

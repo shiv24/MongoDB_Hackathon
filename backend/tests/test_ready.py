@@ -115,3 +115,15 @@ def test_generation_rechecks_changes_after_provider_call(db,monkeypatch):
     with pytest.raises(Conflict):preview(None,r['_id'])
     after=runs.get(ALICE,r['_id'])
     assert not after.get('artifact') and after['generating'] is False
+
+
+def test_decision_requirement_keeps_evidence():
+    from app.agent.llm import Draft
+    from app.routes.build import ground_direct_payload
+    draft = Draft(objective='Signup', requirements=['Do not collect phone numbers [D1]'],
+                  current_decisions=[], implementation_context=[], preferences=[],
+                  acceptance_checks=[], blocking_questions=[], other_questions=[],
+                  assumptions=[], resolved_questions=[])
+    result = ground_direct_payload(draft, {'D1'})
+    assert result['requirements'] == ['Do not collect phone numbers [D1]']
+    assert result['assumptions'] == []
