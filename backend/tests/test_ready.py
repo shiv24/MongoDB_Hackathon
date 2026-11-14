@@ -136,3 +136,28 @@ def test_project_rule_rejects_blank_text():
     with pytest.raises(ValidationError):
         DecisionIn(text='   ')
     assert DecisionIn(text='  Preserve tenant boundaries.  ').text == 'Preserve tenant boundaries.'
+
+
+def test_source_read_is_scoped_and_returns_current_revision(db):
+    from app.repo import context
+    db.users.insert_one({'_id':'alice','name':'Alice','team_id':'team_a','project_ids':['signup'],'role':'publisher'})
+    source = context.add_source(ALICE, 'signup', 'Spec', 'Old')
+    context.add_source(ALICE, 'signup', 'Spec', 'Current')
+    c = TestClient(app)
+    c.post('/api/login', json={'user_id':'alice'})
+    response = c.get('/api/projects/signup/sources/' + source['source_id'])
+    assert response.status_code == 200
+    assert response.json()['text'] == 'Current'
+    assert c.get('/api/projects/other/sources/' + source['source_id']).status_code == 403
+
+
+def test_retrieval_excludes_low_relevance_lessons(db, monkeypatch):
+    from app.agent import retrieve
+    monkeypatch.setattr(retrieve.context, 'search_sources', lambda *a, **k: [])
+    monkeypatch.setattr(retrieve.context, 'search_decisions', lambda *a, **k: [])
+    records = [{'_id':str(i), 'revision':1,'scope':'project','owner_id':'alice','text':text,'score':0.8}
+               for i,text in enumerate(['Calculator equals button', 'Signup password hints'])]
+    monkeypatch.setattr(retrieve.lessons, 'search', lambda *a, **k: records)
+    monkeypatch.setattr(retrieve.embed, 'rerank', lambda q, docs, limit: [(1,0.6),(0,0.1)] if docs else [])
+    entries = retrieve.gather(ALICE, 'signup', 'Build signup')
+    assert [e['text'] for e in entries] == ['Signup password hints']

@@ -14,36 +14,35 @@
     </div>
   </header>
 
-  <div class="hero"><div class="eyebrow">YOUR TEAM KNOWS MORE THAN ONE PROMPT CAN SAY.</div><h1>One thought.<br><span>Your whole team behind it.</span></h1><p>Turn a loose idea into precise instructions, grounded in your team’s decisions, documents, and experience.</p><div class="hero-tags"><span>01 &nbsp; Bring context</span><span>02 &nbsp; Forge the prompt</span><span>03 &nbsp; Build with confidence</span></div></div><div class="layout">
+  <div class="hero"><div class="eyebrow">A BETTER START FOR EVERY AGENT.</div><h1>Good ideas deserve<br><span>great instructions.</span></h1><p>Tell us what you want to build. We’ll bring the knowledge your team already has.</p></div><div class="layout">
     <main class="flow">
       <!-- 1. Request: type directly or dictate into the request field. -->
       <section class="card" id="request-card">
-        <h2><span class="step">1</span> Request</h2>
-        <p class="hint">Start with the idea. Your team’s context supplies the details.</p>
+        <h2>What do you want to build?</h2>
+        <p class="hint">A sentence is enough to start. Be as specific as you like.</p>
         <div class="row">
           <button id="talk-btn" type="button">🎙 Record request</button>
 
         </div>
-        <div id="type-row" class="row">
+        <button id="demo-request" class="example-request" type="button">Try the demo: secure customer exports ↗</button><div id="type-row" class="row">
           <textarea id="type-input" rows="3" aria-label="Your request" placeholder="Build the signup page. Follow what our team decided."></textarea>
-          <button id="send-btn" type="button">Forge prompt</button>
+          <div class="composer-footer"><span class="hint">⌘ / Ctrl + Enter to create</span><button id="send-btn" type="button">Create prompt <span aria-hidden="true">↗</span></button></div><div id="request-status" class="hidden" role="status"></div><div id="request-error" class="callout warn hidden" role="alert"></div>
         </div>
       </section>
 
       <section class="card hidden" id="brief-card">
-        <div class="eyebrow">CONTEXT → CLARITY</div><h2>Your idea, fully briefed.</h2><p class="hint">Review the instructions, inspect their evidence, then take them to your agent.</p><div id="contributions" class="contributions"></div><details id="brief-details" open>
+        <div class="result-header"><div><div class="eyebrow">READY FOR YOUR AGENT</div><h2>Your prompt, with the full picture.</h2></div><button id="copy-btn" type="button">Copy prompt</button></div><p class="hint">Review and edit below. Copy into your preferred agent when ready.</p><div id="contributions" class="contributions"></div><details id="brief-details" open>
           <summary><strong>Your implementation prompt</strong> <span id="run-status" class="chip"></span> <span id="brief-rev" class="muted"></span></summary>
           <div id="stale" class="callout warn hidden"></div>
           <div id="brief"></div>
-          <div class="row">
+          <div class="row prompt-actions">
             <button id="save-brief-btn" class="secondary hidden" type="button">Save edits</button>
             <span class="spacer"></span>
-            <button id="generate-btn" type="button">Generate website preview</button>
-            <button id="export-btn" type="button">Export prompt</button>
+            <button id="generate-btn" class="secondary" type="button">Generate website preview</button>
+            <button id="export-btn" class="secondary" type="button">Download .md</button>
           </div>
           <div id="handoff" class="callout hidden">
-            <strong>Prompt exported.</strong> It was downloaded as <code>promptforge-brief.md</code> (clipboard copying is attempted too). In your project folder, run:
-            <pre id="handoff-cmd">claude "Implement the brief in promptforge-brief.md. Follow every requirement and decision, and check each acceptance check."</pre>
+            <strong>Ready to use.</strong> Paste this prompt into your coding agent, or attach the downloaded Markdown file.
           </div>
         </details>
       </section>
@@ -55,7 +54,7 @@
 
       <!-- 3. Feedback -->
       <section class="card hidden" id="feedback-card">
-        <h2><span class="step">3</span> Feedback</h2>
+        <h2>Make the next prompt better.</h2>
         <p class="hint">What should your team never have to explain again? Add a note, then rate the result.</p>
         <textarea id="feedback-text" rows="3" placeholder="What worked, or what should change?"></textarea>
         <div class="feedback-actions" role="group" aria-label="Rate this prompt">
@@ -82,13 +81,14 @@
           <button id="src-btn" class="secondary" type="button">Add source</button>
         </details>
       </section>
+<section class="card history-card"><h3>Your recent prompts</h3><div id="recent-runs"></div></section>
     </aside>
   </div>
 
   <dialog id="brain-dialog" aria-labelledby="brain-title">
     <div class="row"><div><div class="eyebrow">YOUR PROJECT’S MEMORY</div><h2 id="brain-title">The shared brain</h2></div><span class="spacer"></span><button id="brain-close" class="secondary" type="button">Close</button></div>
     <p class="hint">Explore the decisions and lessons available to your prompts. Only current decisions and approved, unexpired lessons can guide new work.</p>
-    <label for="brain-search">Find a decision or lesson</label><input id="brain-search" type="search" placeholder="Search memory…">
+    <label for="brain-search">Search your team’s knowledge</label><input id="brain-search" type="search" placeholder="Find a source, decision or lesson…">
     <div id="brain-entries"></div>
     <details><summary>Add a project rule</summary><p class="hint">Save an explicit team decision. It can guide future relevant requests.</p><textarea id="rule-text" rows="3" placeholder="For this project, …"></textarea><button id="rule-save" type="button">Save project rule</button></details>
   </dialog>

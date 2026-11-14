@@ -22,7 +22,11 @@ def gather(session: dict, project_id: str, query: str) -> list[dict]:
     for i, d in enumerate(context.search_decisions(session, project_id, vec), 1):
         entries.append({"key": f"D{i}", "type": "decision", "id": d["_id"], "revision": d["revision"],
                         "owner_id": d["owner_id"], "text": d["text"], "score": round(d["score"], 4)})
-    for i, l in enumerate(lessons.search(session, project_id, vec), 1):
+    candidates = lessons.search(session, project_id, vec)
+    ranked = embed.rerank(query, [l['text'] for l in candidates], config.RETRIEVE_LIMIT)
+    relevant_lessons = [candidates[idx] for idx, relevance in ranked
+                        if relevance >= config.LESSON_RELEVANCE_MIN]
+    for i, l in enumerate(relevant_lessons, 1):
         entries.append({"key": f"L{i}", "type": "lesson", "id": l["_id"], "revision": l["revision"],
                         "scope": l["scope"], "owner_id": l["owner_id"], "approved_by": l.get("approved_by"),
                         "text": l["text"], "score": round(l["score"], 4)})

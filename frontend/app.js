@@ -52,6 +52,16 @@ async function init() {
   state.projectId = project._id;
   $("active-context").textContent = `${state.me.name} · ${project.name}`;
   await loadContext();
+  const saved = location.hash.match(/^#run=([a-f0-9]+)$/);
+  if (saved) await openRun(saved[1]);
+}
+
+async function openRun(id) {
+  if (state.previewing) return;
+  state.run = await api(`/runs/${id}`);
+  $('type-input').value = state.run.request;
+  renderRun(); renderContext();
+  history.replaceState(null, '', `#run=${id}`);
 }
 
 // ---------- direct request and optional microphone ----------
@@ -64,10 +74,18 @@ async function submitRequest(clarification = '') {
   const answers = clarification ? (state.run?.clarification_text || '') + '\n' + clarification : '';
   state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers}});
   renderRun(); await loadContext();
-
+  history.replaceState(null, '', `#run=${state.run._id}`);
+  $('brief-card').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function tell(text) { busy($('send-btn'), 'Updating…', () => submitRequest(text)); }
-$('send-btn').addEventListener('click', e => busy(e.target, 'Forging prompt…', () => submitRequest()));
+$('send-btn').addEventListener('click', e => busy(e.currentTarget, 'Creating…', async () => {
+  show('request-error', false); show('request-status');
+  $('request-status').textContent = 'Finding relevant team knowledge and writing your prompt…';
+  try { await submitRequest(); }
+  catch (err) { $('request-error').textContent = err.message; show('request-error'); }
+  finally { show('request-status', false); }
+}));
+$('demo-request').addEventListener('click', () => { $('type-input').value = 'Build the Northstar customer export screen using our demo spec and team decisions.'; $('type-input').focus(); });
 $('type-input').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('send-btn').click(); });
 
 $('talk-btn').addEventListener('click', async () => {
@@ -96,6 +114,7 @@ $('talk-btn').addEventListener('click', async () => {
 });
 async function generatePreview() {
   if (!state.run?._id || state.previewing) return;
+  if (!$('save-brief-btn').classList.contains('hidden')) throw new Error('Save your edits before generating a preview.');
   state.previewing = true;
   $('send-btn').disabled = true;
   renderRun();
@@ -111,6 +130,16 @@ async function generatePreview() {
   }
 }
 
+$('copy-btn').addEventListener('click', e => busy(e.currentTarget, 'Copying…', async () => {
+  if (!$('save-brief-btn').classList.contains('hidden')) throw new Error('Save your edits before copying.');
+  try {
+    const md = await api(`/runs/${state.run._id}/export`);
+    await navigator.clipboard.writeText(md); toast('Prompt copied. Paste it into your agent.');
+  } catch (err) {
+    if (err.status === 409) { state.run = await api(`/runs/${state.run._id}`); renderRun(); }
+    throw err;
+  }
+}));
 $('generate-btn').addEventListener('click', e => busy(e.target, 'Generating preview…', generatePreview));
 
 // ---------- project context sidebar ----------
@@ -133,6 +162,9 @@ function renderContext() {
   const used = usedIds();
   $('brain-count').textContent = `${c.sources.length} sources · ${c.decisions.filter(d => d.status === 'current').length} decisions · ${c.lessons.filter(l => l.status === 'approved').length} approved lessons`;
   renderBrain();
+  $('recent-runs').replaceChildren(...(c.runs || []).filter(r => r.status !== 'drafting').slice(0, 6).map(r =>
+    el('button', {class:'history-item', type:'button', disabled:state.previewing, onclick: e => busy(e.currentTarget, 'Opening…', () => openRun(r._id))}, r.request)));
+  if (!(c.runs || []).length) $('recent-runs').append(el('p', {class:'hint'}, 'Your saved prompts will appear here.'));
   $("sources").replaceChildren(...c.sources.map((s) => el("li", { class: used.has(s.source_id) ? "used" : "" },
     el("span", { class: "text" }, s.title), el("span", { class: "meta" }, `${s.kind} · revision ${s.revision} · added by ${s.added_by}`))));
   if (!c.sources.length) $("sources").append(el("li", { class: "muted" }, "No sources yet."));
@@ -163,13 +195,20 @@ function renderBrain() {
   const c = state.context; if (!c) return;
   const query = $('brain-search').value.trim().toLowerCase();
   const root = $('brain-entries'); root.replaceChildren();
-  for (const [title, records] of [['Decisions', c.decisions], ['Lessons', c.lessons]]) {
+  for (const [title, records] of [['Sources', c.sources.map(s => ({...s, text:s.title, status:'source',owner_id:s.added_by}))], ['Decisions', c.decisions], ['Lessons', c.lessons]]) {
     const matches = records.filter(r => `${r.text} ${r.scope || ''} ${r.status}`.toLowerCase().includes(query));
     root.append(el('h3', {}, title));
     if (!matches.length) root.append(el('p', {class:'hint'}, query ? 'No matches.' : `No ${title.toLowerCase()} yet.`));
     for (const r of matches) root.append(el('article', {class:'memory-entry'},
       el('div', {class:'row'}, chip(r.status), el('span', {class:'muted'}, `${r.scope || 'project'} · ${r.owner_id || 'team'} · revision ${r.revision}`)),
-      el('p', {}, r.text)));
+      el('p', {}, r.text),
+      r.source_id ? el('button', {class:'secondary', type:'button', onclick: async e => busy(e.currentTarget, 'Loading…', async () => {
+        const article = e.currentTarget.closest('article');
+        const source = await api(`/projects/${state.projectId}/sources/${r.source_id}`);
+        let content = article.querySelector('.source-content');
+        if (!content) { content = el('pre', {class:'source-content'}); article.append(content); }
+        content.textContent = source.text;
+      })}, 'Read source') : null));
   }
 }
 $('brain-open').addEventListener('click', () => { renderBrain(); $('brain-dialog').showModal(); });
@@ -245,14 +284,14 @@ function renderRun() {
   root.append(el("div", { class: "brief-section" }, el("h3", {}, "Objective"), el("p", { contenteditable: "true", "data-path": "objective" }, b.objective)));
   for (const [key, title] of SECTIONS) {
     const items = b[key] || [];
+    if (!items.length) continue;
     root.append(el("div", { class: "brief-section" }, el("h3", {}, title),
       items.length ? el("ul", {}, items.map((it, i) => el("li", {},
         el("span", { contenteditable: "true", "data-path": `${key}.${i}` }, it.text), citeChips(it.sources),
         it.uncited ? el("span", { class: "uncited" }, "uncited") : null))) : el("p", { class: "muted" }, "None")));
   }
   const qs = b.open_questions || [];
-  root.append(el("h3", {}, "Open questions"));
-  if (!qs.length) root.append(el("p", { class: "muted" }, "None"));
+  if (qs.length) root.append(el("h3", {}, "Open questions"));
   qs.forEach((q, i) => root.append(el("div", { class: `question ${q.blocking ? "blocking" : ""}` },
     q.blocking ? chip("blocking") : chip("non-blocking"), " ", q.text, citeChips(q.sources),
     el("div", { class: "row" }, el("input", { id: `qa-${i}`, placeholder: "Additional guidance" }),
@@ -276,6 +315,7 @@ $("save-brief-btn").addEventListener("click", (e) => busy(e.target, "Saving…",
 }));
 
 $("export-btn").addEventListener("click", (e) => busy(e.target, "Rechecking memory…", async () => {
+  if (!$("save-brief-btn").classList.contains("hidden")) throw new Error("Save your edits before downloading.");
   let md;
   try { md = await api(`/runs/${state.run._id}/export`); }
   catch (err) { if (err.status === 409) { state.run = await api(`/runs/${state.run._id}`); renderRun(); } throw err; }

@@ -48,3 +48,6 @@ OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 OPENAI_BRIEF_MODEL = os.environ.get('OPENAI_BRIEF_MODEL') or 'gpt-4.1-mini'
 OPENAI_GENERATION_MODEL = os.environ.get('OPENAI_GENERATION_MODEL') or 'gpt-4.1-mini'
 ELEVENLABS_STT_MODEL = os.environ.get('ELEVENLABS_STT_MODEL') or 'scribe_v2'
+
+# Demo-calibrated reranker threshold; tune with task-specific relevance examples.
+LESSON_RELEVANCE_MIN = float(os.environ.get('LESSON_RELEVANCE_MIN', '0.3'))

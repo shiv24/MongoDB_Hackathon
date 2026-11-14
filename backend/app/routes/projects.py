@@ -46,6 +46,22 @@ def get_context(request: Request, project_id: str):
     }
 
 
+@router.get("/{project_id}/sources/{source_id}")
+def read_source(request: Request, project_id: str, source_id: str):
+    s = current(request)
+    scope.require_project(s, project_id)
+    from app.db import get_db
+    from app.errors import NotFound
+    query = {"team_id": s["team_id"], "project_id": project_id, "source_id": source_id}
+    collection = get_db().sources
+    latest = collection.find_one(query, sort=[("revision", -1)])
+    if not latest:
+        raise NotFound('Source not found')
+    chunks = collection.find({**query, "revision": latest["revision"]}, {"embedding": 0}).sort("chunk_index", 1)
+    return {"title": latest["title"], "revision": latest["revision"],
+            "text": "\n\n".join(chunk["text"] for chunk in chunks)}
+
+
 @router.post("/{project_id}/sources")
 def add_source(request: Request, project_id: str, body: SourceIn):
     return context.add_source(current(request), project_id, body.title, body.text, body.kind)
