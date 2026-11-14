@@ -99,7 +99,7 @@ def propose(session: dict, project_id: str, text: str, evidence_run_id: str, fee
     doc = {"_id": new_id(), "team_id": session["team_id"], "project_id": project_id,
            "owner_id": session["user_id"], "scope": "personal", "text": text, "revision": 1, "supersedes": None,
            "status": "proposed", "evidence_run_id": evidence_run_id, "feedback_id": feedback_id,
-           "task_tags": task_tags, "model": config.CLAUDE_MODEL, "approved_by": None,
+           "task_tags": task_tags, "model": config.ELEVENLABS_AGENT_LLM, "approved_by": None,
            "duplicate_of": duplicate_of, "conflicts": conflicts,
            "embedding": embed.document(text), "created_at": now()}
     get_db().lessons.insert_one(doc)
@@ -193,7 +193,7 @@ def forget(session: dict, lesson_id: str) -> dict:
 
 
 def mark_used(lesson_ids: list[str]) -> None:
-    """Citing a lesson in an executed run keeps it fresh."""
+    """Citing a lesson in an exported brief keeps it fresh."""
     if lesson_ids:
         get_db().lessons.update_many({"_id": {"$in": lesson_ids}, "status": "approved"},
                                      {"$set": {"last_used_at": now(), **_expiry()}})

@@ -1,12 +1,13 @@
-"""End-to-end HTTP flow with Claude and $vectorSearch stubbed (no network, no Atlas)."""
+"""End-to-end flow through the ElevenLabs agent tool webhooks and the UI API, with Voyage,
+$vectorSearch and the ElevenLabs signed-URL call stubbed (no network, no Atlas)."""
 import pytest
 from fastapi.testclient import TestClient
 
-from app.agent import brief as brief_mod
-from app.agent import intent as intent_mod
-from app.agent import learn, llm, validate
+from app import config
+from app.agent import embed
 from app.main import app
 from app.repo import context, lessons
+from app.routes import voice
 
 SPEC = "Required fields: work email, full name, password."
 
@@ -15,14 +16,16 @@ SPEC = "Required fields: work email, full name, password."
 def client(db, monkeypatch):
     db.users.insert_many([
         {"_id": "alice", "name": "Alice", "team_id": "team_a", "project_ids": ["signup"], "role": "publisher"},
+        {"_id": "bob", "name": "Bob", "team_id": "team_a", "project_ids": ["signup"], "role": "member"},
         {"_id": "carol", "name": "Carol", "team_id": "team_b", "project_ids": ["orbit"], "role": "admin"}])
     db.projects.insert_many([{"_id": "signup", "team_id": "team_a", "name": "Signup"},
                              {"_id": "orbit", "team_id": "team_b", "name": "Orbit"}])
     db.sources.insert_one({"_id": "c1", "team_id": "team_a", "project_id": "signup", "source_id": "spec",
                            "title": "Signup spec", "kind": "spec", "revision": 1, "chunk_index": 0, "text": SPEC,
                            "added_by": "alice"})
+    context.add_decision({"user_id": "alice", "team_id": "team_a", "project_ids": ["signup"], "role": "publisher"},
+                         "signup", "Use the Lumen ID service.")
 
-    # $vectorSearch stand-ins that still apply team/project/status rules
     monkeypatch.setattr(context, "search_sources", lambda s, p, v, limit=6: [
         {**d, "score": 0.9} for d in db.sources.find({"team_id": s["team_id"], "project_id": p})])
     monkeypatch.setattr(context, "search_decisions", lambda s, p, v, limit=6: [
@@ -34,88 +37,110 @@ def client(db, monkeypatch):
                 if lessons._visible(s, d)]
     monkeypatch.setattr(lessons, "search", fake_lessons)
     monkeypatch.setattr(lessons, "similar_approved", fake_lessons)
+    monkeypatch.setattr(embed, "rerank", lambda q, docs, k: [(i, 0.5) for i in range(min(k, len(docs)))])
 
-    def fake_parse(system, user, schema, effort="medium", max_tokens=16000):
-        if schema is intent_mod.Intent:
-            req = next(l for l in user.splitlines() if l.startswith("Request:")).lower()
-            q = None if ("Clarification" in user or "signup" in req) else "Signup or login page?"
-            return schema(feature="Signup page", documents=["Signup spec"], clarifying_question=q,
-                          search_query="signup page"), "stub"
-        if schema is brief_mod.BriefOut:
-            prefs = [{"text": t.split(": ", 1)[1], "sources": [t[1:3]]} for t in user.splitlines()
-                     if t.startswith("[L") and "preference" in t]
-            return schema(objective="Build the signup page",
-                          requirements=[{"text": "Collect work email, full name, password", "sources": ["S1"]}],
-                          current_decisions=[], implementation_context=[], preferences=prefs,
-                          acceptance_checks=[{"text": "Form has an email field", "sources": ["S1"]}],
-                          open_questions=[], assumptions=[]), "stub"
-        if schema is validate.Review:
-            return schema(checks=[{"index": 0, "result": "passed", "evidence": "input type=email"}]), "stub"
-        if schema is learn.Proposal:
-            return schema(reusable=True, lesson="Always include a mobile layout below 600px.",
-                          task_tags=["signup"], duplicate_of=None, conflicts=[]), "stub"
-        raise AssertionError(schema)
+    monkeypatch.setattr(config, "ELEVENLABS_API_KEY", "test")
+    monkeypatch.setattr(config, "ELEVENLABS_AGENT_ID", "agent_test")
 
-    monkeypatch.setattr(llm, "parse", fake_parse)
-    monkeypatch.setattr(llm, "generate_text", lambda s, u, **k: (
-        '<!doctype html><html><head><meta name="viewport" content="width=device-width"></head>'
-        '<body><input type="email"><script>bad()</script></body></html>', "stub"))
+    class FakeResp:
+        def raise_for_status(self): pass
+        def json(self): return {"signed_url": "wss://example.invalid/signed"}
+    monkeypatch.setattr(voice.httpx, "get", lambda *a, **k: FakeResp())
     return TestClient(app)
 
 
-def test_requires_login(client):
-    assert client.get("/api/projects").status_code == 401
+def _voice_session(client, user="alice", project="signup"):
+    client.post("/api/login", json={"user_id": user})
+    s = client.post("/api/voice/session", json={"project_id": project}).json()
+    return s, {"X-PF-Session": s["dynamic_variables"]["secret__pf_token"]}
 
 
-def test_full_flow_feedback_becomes_lesson_in_next_run(client, db):
-    assert client.post("/api/login", json={"user_id": "alice"}).json()["team_id"] == "team_a"
-
-    # ambiguous request -> one clarifying question
-    r = client.post("/api/runs", json={"project_id": "signup", "request": "build the page from that doc"}).json()
-    assert r["status"] == "needs_clarification" and r["question"]
-    r = client.post(f"/api/runs/{r['_id']}/clarify", json={"answer": "the signup page"}).json()
-    assert r["status"] == "draft" and r["brief"]["requirements"][0]["sources"] == ["S1"]
-
-    md = client.get(f"/api/runs/{r['_id']}/export").text
-    assert "[S1]" in md and "## Provenance" in md
-
-    r = client.post(f"/api/runs/{r['_id']}/execute").json()
-    assert r["status"] == "executed" and "<script" not in r["artifact"]["html"]
-    results = {c["name"]: c["result"] for c in r["checks"]}
-    assert results["No scripts in generated output"] == "failed"  # visible, not hidden
-    assert results["Form has an email field"] == "passed"
-
-    fb = client.post(f"/api/runs/{r['_id']}/feedback", json={"text": "we always need a mobile layout"}).json()
-    lesson = fb["proposed"]
-    assert lesson["status"] == "proposed"
-
-    # not used until approved
-    r2 = client.post("/api/runs", json={"project_id": "signup", "request": "build the signup page"}).json()
-    assert not r2["brief"]["preferences"]
-
-    a = client.post(f"/api/lessons/{lesson['_id']}/approve", json={"scope": "project"}).json()
-    assert a["status"] == "approved"
-
-    r3 = client.post("/api/runs", json={"project_id": "signup", "request": "build the signup page"}).json()
-    assert [p["text"] for p in r3["brief"]["preferences"]] == ["Always include a mobile layout below 600px."]
-    cited = [e for e in r3["provenance"] if e["type"] == "lesson"]
-    assert cited[0]["id"] == lesson["_id"] and cited[0]["revision"] == 1
-
-    # retire it -> executing the old brief is refused with the change shown
-    client.post(f"/api/lessons/{lesson['_id']}/retire")
-    resp = client.post(f"/api/runs/{r3['_id']}/execute")
-    assert resp.status_code == 409 and resp.json()["changes"][0]["change"] == "now retired"
-    r3 = client.post(f"/api/runs/{r3['_id']}/refresh").json()
-    assert not r3["brief"]["preferences"] and r3["status"] == "draft"
-
-    hist = [e["event"] for e in client.get(f"/api/lessons/{lesson['_id']}/history").json()]
-    assert hist == ["proposed", "approved", "retired"]
+def test_tools_reject_missing_or_bad_token(client):
+    assert client.post("/api/agent/context", json={"request": "x"}).status_code == 401
+    assert client.post("/api/agent/context", json={"request": "x"}, headers={"X-PF-Session": "nope"}).status_code == 401
 
 
-def test_other_team_cannot_read_runs_or_projects(client):
-    client.post("/api/login", json={"user_id": "alice"})
-    run = client.post("/api/runs", json={"project_id": "signup", "request": "build the signup page"}).json()
+def test_voice_session_requires_login_and_membership(client):
+    assert client.post("/api/voice/session", json={"project_id": "signup"}).status_code == 401
     client.post("/api/login", json={"user_id": "carol"})
-    assert client.get(f"/api/runs/{run['_id']}").status_code == 404
-    assert client.post("/api/runs", json={"project_id": "signup", "request": "x signup"}).status_code == 403
-    assert client.get("/api/projects/signup/context").status_code == 403
+    assert client.post("/api/voice/session", json={"project_id": "signup"}).status_code == 403
+
+
+def test_agent_drafts_user_exports_feedback_becomes_lesson(client, db):
+    s, h = _voice_session(client)
+    assert s["signed_url"].startswith("wss://") and s["dynamic_variables"]["project_name"] == "Signup"
+
+    ctx = client.post("/api/agent/context", json={"request": "build the signup page", "search_query": "signup page"}, headers=h).json()
+    assert "[S1]" in ctx["context"] and "[D1]" in ctx["context"]
+    run_id = ctx["run_id"]
+
+    saved = client.post("/api/agent/brief", headers=h, json={
+        "run_id": run_id, "objective": "Build the signup page",
+        "requirements": ["Collect work email, full name, password [S1]"],
+        "current_decisions": ["Create accounts through Lumen ID [D1]"],
+        "acceptance_checks": ["Form has an email field [S1]"],
+        "blocking_questions": ["What are the company size options?"]}).json()
+    assert saved["status"] == "needs_answers" and saved["blocking_questions"]
+
+    # the UI polls the run the agent is working on
+    assert client.get(f"/api/voice/session/{s['agent_session_id']}/run").json()["_id"] == run_id
+    assert client.get(f"/api/runs/{run_id}/export").status_code == 409  # blocking question unresolved
+
+    saved = client.post("/api/agent/brief", headers=h, json={
+        "run_id": run_id, "objective": "Build the signup page",
+        "requirements": ["Collect work email, full name, password [S1]"],
+        "current_decisions": ["Create accounts through Lumen ID [D1]"],
+        "acceptance_checks": ["Form has an email field [S1]"],
+        "resolved_questions": ["What are the company size options? => 1-10, 11-50, 51+"]}).json()
+    assert saved["status"] == "draft" and saved["brief_revision"] == 2
+
+    md = client.get(f"/api/runs/{run_id}/export").text
+    assert "[S1]" in md and "## Provenance" in md and "1-10, 11-50, 51+" in md
+
+    out = client.post(f"/api/runs/{run_id}/outcome", json={"tool": "Claude Code", "results": [
+        {"index": 0, "result": "passed", "evidence": "input type=email present"}]}).json()
+    assert out["status"] == "reviewed" and out["checks"][0]["method"] == "user_review"
+
+    fb = client.post("/api/agent/feedback", headers=h, json={
+        "run_id": run_id, "feedback": "It broke on my phone", "lesson": "Always include a mobile layout below 600px."}).json()
+    assert fb["proposed_lesson_id"] and fb["scopes_allowed"] == ["personal", "project", "team"]
+
+    # proposed lessons do not shape new briefs
+    ctx2 = client.post("/api/agent/context", json={"request": "build the signup page", "search_query": "signup"}, headers=h).json()
+    assert "[L1]" not in ctx2["context"]
+
+    ok = client.post("/api/agent/lessons/approve", headers=h, json={"lesson_id": fb["proposed_lesson_id"], "scope": "project"}).json()
+    assert ok["status"] == "approved"
+    ctx3 = client.post("/api/agent/context", json={"request": "build the signup page", "search_query": "signup"}, headers=h).json()
+    assert "[L1] approved project preference rev 1: Always include a mobile layout below 600px." in ctx3["context"]
+
+    hist = [e["event"] for e in client.get(f"/api/lessons/{fb['proposed_lesson_id']}/history").json()]
+    assert hist == ["proposed", "approved"]
+
+
+def test_member_agent_cannot_publish_team_lesson(client):
+    s, h = _voice_session(client, user="bob")
+    run_id = client.post("/api/agent/context", json={"request": "signup", "search_query": "signup"}, headers=h).json()["run_id"]
+    fb = client.post("/api/agent/feedback", headers=h, json={"run_id": run_id, "feedback": "x", "lesson": "Use sentence case."}).json()
+    assert "team" not in fb["scopes_allowed"]
+    assert client.post("/api/agent/lessons/approve", headers=h, json={"lesson_id": fb["proposed_lesson_id"], "scope": "team"}).status_code == 403
+
+
+def test_stale_brief_refused_at_export(client, db):
+    s, h = _voice_session(client)
+    run_id = client.post("/api/agent/context", json={"request": "signup", "search_query": "signup"}, headers=h).json()["run_id"]
+    client.post("/api/agent/brief", headers=h, json={"run_id": run_id, "objective": "o",
+                                                    "requirements": ["Use Lumen ID [D1]"], "acceptance_checks": []})
+    d = db.decisions.find_one({"status": "current"})
+    client.post(f"/api/projects/decisions/{d['_id']}/supersede", json={"text": "Use Lumen ID v2."})
+    r = client.get(f"/api/runs/{run_id}/export")
+    assert r.status_code == 409 and r.json()["changes"][0]["change"] == "superseded"
+
+
+def test_other_team_token_cannot_touch_run(client):
+    s, h = _voice_session(client)
+    run_id = client.post("/api/agent/context", json={"request": "signup", "search_query": "signup"}, headers=h).json()["run_id"]
+    _, h_carol = _voice_session(client, user="carol", project="orbit")
+    r = client.post("/api/agent/brief", headers=h_carol, json={"run_id": run_id, "objective": "steal", "requirements": [],
+                                                               "acceptance_checks": []})
+    assert r.status_code == 404

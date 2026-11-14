@@ -175,7 +175,7 @@ flowchart TD
     P --> H
 ```
 
-The prototype uses **FastAPI**, a plain HTML/JavaScript frontend, **MongoDB Atlas** (collections, Vector Search, TTL), **Anthropic Claude** (`claude-opus-5-5` by default) for intent, brief assembly, generation, review and lesson proposals, **Voyage AI** embeddings, and **ElevenLabs** speech-to-text. Secrets stay on the server. Generated HTML renders in a sandboxed iframe without scripts.
+The prototype uses only **MongoDB Atlas** and the event's partner resources: an **ElevenLabs agent** (voice or text) is the only LLM and writes the brief, reaching Atlas solely through PromptForge's governed API as webhook tools; **Voyage AI** provides embeddings and reranking; **LangSmith** traces retrieval and each agent tool step. FastAPI serves the API and a plain HTML/JavaScript frontend. Secrets stay on the server. The brief is exported as Markdown to the user's coding tool, such as Claude Code.
 
 ### Planned records
 
@@ -192,22 +192,22 @@ The collections are `users`, `projects`, `sources`, `decisions`, `lessons`, `run
 
 ## Implementation status
 
-**First complete workflow implemented and tested offline; not yet verified against the Atlas Sandbox or live models.** Run the steps under [Local development](#local-development) to verify.
+**Workflow implemented and tested offline; not yet verified against the Atlas Sandbox, ElevenLabs, Voyage or LangSmith.** Follow [Local development](#local-development) to verify.
 
 | Area | Current state |
 | --- | --- |
-| Request | Typed or spoken (ElevenLabs via `/api/transcribe`); one clarifying question when two documents or features fit |
-| Context | Scoped `$vectorSearch` over source chunks, current decisions and approved lessons; results re-checked against the collections because search indexes sync asynchronously |
-| Brief | Cited sections (requirements, decisions, implementation context, preferences, acceptance checks, open questions, assumptions); unknown citations dropped, uncited items flagged; editable; blocking questions must be answered before running |
-| Export | Markdown with citations and a provenance list of source and memory revisions |
-| Execution | Cited memory rechecked first; if anything changed, the run is marked stale and the change is shown. One adapter: Claude generates one self-contained HTML page, sanitized server-side and rendered in `<iframe sandbox="">` |
-| Validation | Static checks (parses, no scripts, viewport meta) plus a model review of each acceptance check; every result is labelled with how it was checked, and failed or unrun checks stay visible |
-| Learning | Feedback becomes a proposed lesson with evidence, duplicate and conflict hints; the user approves it as personal, project or team (team needs publisher/admin) |
-| Governance | Correction by revision and supersession; retire; forget (removes from use, marks citing runs stale, logs without text); expiry sweep before reads, TTL purge 7 days later; append-only `memory_events` with a JSON Schema validator |
-| Fixtures | `scripts/data/fixtures.json`: one Lumen signup project covering every lifecycle state, a second Lumen project for membership checks, and an Orbit team for isolation |
-| Tests | 21 offline tests (scope filters, lifecycle on an in-memory database, brief/citation handling, full HTTP flow with Claude and vector search stubbed); 3 live Atlas tests that run once `.env` is configured and fixtures are seeded |
+| Request | A conversation with the ElevenLabs agent, by voice or typed (text-only mode). The agent asks one clarifying question when two documents or features fit |
+| Agent ↔ Atlas | Five webhook tools: `get_project_context`, `save_brief`, `record_feedback`, `approve_lesson`, `reject_lesson`. Each call carries a short-lived session token passed as a `secret__` dynamic variable, which ElevenLabs never sends to the LLM; identity, team and project come from that token, never from the model |
+| Context | Scoped `$vectorSearch` (Voyage embeddings) over source chunks, current decisions and approved lessons; source chunks reranked with Voyage rerank; hits re-checked against the collections because search indexes sync asynchronously |
+| Brief | Written by the agent with `[S1]`-style citations; unknown citations dropped and uncited items flagged; shown live on screen; editable; blocking questions must be resolved before export |
+| Export | Cited memory rechecked first (stale → refused with the change shown); Markdown with a provenance list, downloaded and copied for Claude Code or any coding tool |
+| Result | The user records which acceptance checks the externally built result meets; unmarked checks stay "not run" |
+| Learning | Feedback (spoken to the agent or typed) becomes a proposed lesson with duplicate and conflict hints; approval at personal, project or team scope is a separate, explicit step (team needs publisher/admin) |
+| Governance | Revisions and supersession, retire, forget (marks citing runs stale, logs without text), expiry sweep before reads with TTL purge later, append-only `memory_events` with a JSON Schema validator |
+| Tracing | LangSmith traces for context gathering, Voyage calls, and each pipeline step when `LANGSMITH_TRACING=true` |
+| Tests | 24 offline tests (scope filters, lifecycle, brief parsing, full agent-tool HTTP flow with external calls stubbed); 3 live Atlas tests that run once `.env` is configured and fixtures are seeded |
 
-Not implemented: live document or repository connectors, multiple model adapters, coding-tool handoff, artifact types other than HTML, A/B comparison, and a complete erasure workflow.
+Not implemented: running the brief with a model inside PromptForge (no partner credit covers generation; the brief is exported instead), live document or repository connectors, automated validation of results, and a complete erasure workflow.
 
 [docs/DESIGN.md](docs/DESIGN.md) maps this README to the data model, API and modules. The earlier website-voting design is archived in [docs/archive/](docs/archive/website-voting-design.md).
 
@@ -216,12 +216,12 @@ Not implemented: live document or repository connectors, multiple model adapters
 ```text
 backend/
   app/main.py          FastAPI application (API under /api, frontend at /)
-  app/routes/          Auth, projects, runs, lessons, and voice endpoints
-  app/agent/           Pipeline: intent, retrieval, brief, execution, validation, learning; Claude/Voyage/ElevenLabs clients
+  app/routes/          UI endpoints, voice session, and agent_tools.py (ElevenLabs webhook tools)
+  app/agent/           Pipeline: retrieval (Voyage), brief parsing/export, memory recheck
   app/repo/            Scope filters and scoped data access (the only path to Atlas)
   tests/               Offline tests and live Atlas isolation tests
-frontend/              Request → brief → result → feedback screen with a project-context sidebar
-scripts/               Atlas setup, seeding, and demo fixtures
+frontend/              Conversation → brief → export → result → feedback, with a project-context sidebar
+scripts/               Atlas setup, ElevenLabs agent setup, seeding, and demo fixtures
 docs/                  Technical design; archive/ holds the earlier prototype design
 skills/                Repository-specific development instructions
 ```
@@ -234,17 +234,19 @@ From the repository root:
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r backend/requirements.txt
-cp .env.example .env              # MONGODB_URI (Atlas Sandbox), ANTHROPIC_API_KEY, VOYAGE_API_KEY, ELEVENLABS_API_KEY
-python scripts/setup_atlas.py     # collections, validator, indexes, 3 Vector Search indexes, TTL
-python scripts/seed.py --reset    # demo fixtures (embeds them with Voyage)
+cp .env.example .env                    # MONGODB_URI (Atlas Sandbox), VOYAGE_API_KEY, ELEVENLABS_API_KEY, LANGSMITH_API_KEY
+python scripts/setup_atlas.py           # collections, validator, indexes, 3 Vector Search indexes, TTL
+python scripts/seed.py --reset          # demo fixtures (embedded with Voyage)
 uvicorn app.main:app --reload --app-dir backend
-# open http://localhost:8000 and choose a demo user
+cloudflared tunnel --url http://localhost:8000   # in another terminal; put the https URL in PUBLIC_BASE_URL
+python scripts/setup_elevenlabs_agent.py         # creates the agent + tools; put ELEVENLABS_AGENT_ID in .env, restart uvicorn
+# open http://localhost:8000, choose a demo user, and start talking
 ```
 
-Keep `EMBED_DIMS` consistent with the embedding model and search indexes. For the hackathon, provision the cluster through the supplied Atlas Sandbox invitation.
+ElevenLabs calls the tools over the public tunnel URL, so the tunnel must stay up during the demo; re-run the agent setup if its URL changes. For the hackathon, provision the cluster through the supplied Atlas Sandbox invitation.
 
 ```bash
-pytest backend/tests              # offline tests; live Atlas tests run when .env is set and fixtures are seeded
+pytest backend/tests                    # offline tests; live Atlas tests run when .env is set and fixtures are seeded
 ```
 
 ## Team ownership

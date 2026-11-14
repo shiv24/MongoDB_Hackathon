@@ -28,7 +28,7 @@ def main():
     fx = json.loads(DATA.read_text())
 
     if args.reset:
-        for c in ["users", "projects", "sources", "decisions", "lessons", "runs", "feedback"]:
+        for c in ["users", "projects", "sources", "decisions", "lessons", "runs", "feedback", "agent_sessions"]:
             db[c].delete_many({})
         # memory_events is append-only for the app; a reset is a deliberate demo wipe by an operator.
         db.memory_events.delete_many({})
@@ -66,7 +66,7 @@ def main():
         days = l.pop("expires_in_days", config.EXPIRY_DAYS)
         exp = t + timedelta(days=days)
         doc = {"revision": 1, "supersedes": None, "evidence_run_id": None, "feedback_id": None,
-               "task_tags": [], "model": config.CLAUDE_MODEL, "duplicate_of": None, "conflicts": [],
+               "task_tags": [], "model": config.ELEVENLABS_AGENT_LLM, "duplicate_of": None, "conflicts": [],
                "approved_by": l["owner_id"] if l["status"] != "proposed" else None,
                **l, "embedding": v, "created_at": t,
                "expires_at": exp, "purge_at": exp + timedelta(days=config.PURGE_GRACE_DAYS)}

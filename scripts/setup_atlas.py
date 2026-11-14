@@ -15,7 +15,8 @@ from pymongo.operations import SearchIndexModel  # noqa: E402
 from app import config  # noqa: E402
 from app.db import get_db  # noqa: E402
 
-COLLECTIONS = ["users", "projects", "sources", "decisions", "lessons", "runs", "feedback", "memory_events"]
+COLLECTIONS = ["users", "projects", "sources", "decisions", "lessons", "runs", "feedback", "memory_events",
+               "agent_sessions"]
 
 MEMORY_EVENTS_SCHEMA = {
     "$jsonSchema": {
@@ -74,6 +75,8 @@ def main():
     db.runs.create_index("provenance.id")
     db.feedback.create_index("run_id")
     db.memory_events.create_index([("record_id", ASCENDING), ("at", ASCENDING)])
+    db.agent_sessions.create_index("token_hash", unique=True)
+    db.agent_sessions.create_index("expires_at", expireAfterSeconds=0)  # voice-session tokens expire
     print("regular + TTL indexes ensured")
 
     for coll, (name, definition) in VECTOR_INDEXES.items():

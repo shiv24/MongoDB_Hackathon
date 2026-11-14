@@ -1,13 +1,11 @@
 fastapi
 uvicorn[standard]
 pymongo
-anthropic
 voyageai
+langsmith
+httpx
 python-dotenv
 itsdangerous
-python-multipart
-httpx
-beautifulsoup4
+pydantic
 pytest
 mongomock
-pydantic

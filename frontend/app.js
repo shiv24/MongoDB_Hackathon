@@ -1,15 +1,15 @@
-// PromptForge UI: request -> cited brief -> export or run -> result -> feedback -> approved lesson.
-// All text from the server is inserted with textContent (never innerHTML).
+// PromptForge UI: talk to the ElevenLabs agent -> cited brief (live) -> export for Claude Code
+// -> record result -> feedback -> approved lesson. Server text is inserted with textContent only.
+import { Conversation } from "https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.32.1/+esm";
 
 const $ = (id) => document.getElementById(id);
-const state = { me: null, projectId: null, run: null, context: null };
+const state = { me: null, projectId: null, run: null, context: null, conversation: null, agentSessionId: null, poll: null };
 
 // ---------- helpers ----------
 async function api(path, opts = {}) {
   const res = await fetch(`/api${path}`, {
-    headers: opts.body && !(opts.body instanceof FormData) ? { "Content-Type": "application/json" } : {},
-    credentials: "same-origin", ...opts,
-    body: opts.body && !(opts.body instanceof FormData) ? JSON.stringify(opts.body) : opts.body,
+    headers: opts.body ? { "Content-Type": "application/json" } : {}, credentials: "same-origin", ...opts,
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
   });
   const type = res.headers.get("content-type") || "";
   const data = type.includes("json") ? await res.json() : await res.text();
@@ -28,7 +28,7 @@ function el(tag, attrs = {}, ...children) {
   return n;
 }
 
-function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.remove("hidden"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add("hidden"), 5000); }
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.remove("hidden"); clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.add("hidden"), 6000); }
 
 async function busy(btn, label, fn) {
   const old = btn.textContent; btn.disabled = true; btn.textContent = label;
@@ -36,7 +36,7 @@ async function busy(btn, label, fn) {
 }
 
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
-const chip = (text) => el("span", { class: `chip ${text}` }, String(text).replace("_", " "));
+const chip = (text) => el("span", { class: `chip ${text}` }, String(text).replace(/_/g, " "));
 
 // ---------- login and projects ----------
 async function init() {
@@ -47,6 +47,7 @@ async function init() {
 
 $("user-select").addEventListener("change", async (e) => {
   if (!e.target.value) return;
+  await endConversation();
   state.me = await api("/login", { method: "POST", body: { user_id: e.target.value } });
   state.run = null; renderRun();
   await loadProjects();
@@ -61,7 +62,67 @@ async function loadProjects() {
   await loadContext();
 }
 
-$("project-select").addEventListener("change", async (e) => { state.projectId = e.target.value; state.run = null; renderRun(); await loadContext(); });
+$("project-select").addEventListener("change", async (e) => {
+  await endConversation(); state.projectId = e.target.value; state.run = null; renderRun(); await loadContext();
+});
+
+// ---------- conversation with the ElevenLabs agent ----------
+function addLine(role, text) {
+  show("transcript");
+  const list = $("transcript");
+  list.append(el("li", { class: role }, el("span", { class: "who" }, role === "agent" ? "PromptForge agent" : "You"), text));
+  list.scrollTop = list.scrollHeight;
+}
+
+async function startConversation(textOnly) {
+  if (!state.projectId) throw new Error("Choose a user and project first.");
+  if (state.conversation) return;
+  const s = await api("/voice/session", { method: "POST", body: { project_id: state.projectId } });
+  state.agentSessionId = s.agent_session_id;
+  $("transcript").replaceChildren();
+  state.conversation = await Conversation.startSession({
+    signedUrl: s.signed_url,
+    dynamicVariables: s.dynamic_variables,      // secret__pf_token is used only in tool headers, never sent to the LLM
+    textOnly,
+    connectionType: "websocket",
+    onConnect: () => { $("agent-status").textContent = textOnly ? "Connected (text)" : "Listening…"; },
+    onDisconnect: () => { $("agent-status").textContent = "Conversation ended"; stopConversationUi(); },
+    onError: (msg) => toast(`Agent error: ${msg}`),
+    onModeChange: ({ mode }) => { if (!textOnly) $("agent-status").textContent = mode === "speaking" ? "Agent speaking…" : "Listening…"; },
+    onMessage: ({ message, role }) => addLine(role, message),
+  });
+  show("talk-btn", false); show("type-btn", false); show("end-btn"); show("type-row", textOnly);
+  clearInterval(state.poll);
+  state.poll = setInterval(pollRun, 2000);   // the agent saves briefs through tools; mirror them here
+}
+
+function stopConversationUi() {
+  state.conversation = null; clearInterval(state.poll); pollRun();
+  show("talk-btn"); show("type-btn"); show("end-btn", false); show("type-row", false);
+}
+
+async function endConversation() { if (state.conversation) { try { await state.conversation.endSession(); } catch { /* already closed */ } stopConversationUi(); } }
+
+function tell(text) {
+  if (!state.conversation) { toast("Start a conversation with the agent first."); return false; }
+  state.conversation.sendUserMessage(text); addLine("user", text); return true;
+}
+
+$("talk-btn").addEventListener("click", (e) => busy(e.target, "Connecting…", () => startConversation(false)));
+$("type-btn").addEventListener("click", (e) => busy(e.target, "Connecting…", () => startConversation(true)));
+$("end-btn").addEventListener("click", endConversation);
+$("send-btn").addEventListener("click", () => { const v = $("type-input").value.trim(); if (v && tell(v)) $("type-input").value = ""; });
+$("type-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("send-btn").click(); });
+
+async function pollRun() {
+  if (!state.agentSessionId) return;
+  try {
+    const run = await api(`/voice/session/${state.agentSessionId}/run`);
+    if (!run) return;
+    const changed = !state.run || state.run._id !== run._id || state.run.updated_at !== run.updated_at || state.run.status !== run.status;
+    if (changed) { state.run = run; renderRun(); renderContext(); }
+  } catch { /* transient */ }
+}
 
 // ---------- project context sidebar ----------
 async function loadContext() {
@@ -125,7 +186,7 @@ async function lessonAction(l, action) {
       if (!confirm("Retire this lesson? It will no longer shape new briefs.")) return;
       await api(`/lessons/${l._id}/retire`, { method: "POST" });
     } else {
-      if (!confirm("Forget this lesson? It is removed from future use and briefs that cited it are marked stale. Text already in past briefs or artifacts is not erased.")) return;
+      if (!confirm("Forget this lesson? It is removed from future use and briefs that cited it are marked stale. Text already in exported briefs is not erased.")) return;
       const r = await api(`/lessons/${l._id}`, { method: "DELETE" });
       toast(`Forgotten. ${r.runs_marked_stale} run(s) marked stale.`);
     }
@@ -143,37 +204,6 @@ $("dec-btn").addEventListener("click", (e) => busy(e.target, "Adding…", async 
   $("dec-text").value = ""; await loadContext();
 }));
 
-// ---------- request ----------
-$("build-btn").addEventListener("click", (e) => busy(e.target, "Finding context…", async () => {
-  if (!state.projectId) throw new Error("Choose a user and project first.");
-  state.run = await api("/runs", { method: "POST", body: { project_id: state.projectId, request: $("request-text").value } });
-  $("proposal").replaceChildren(); renderRun(); await loadContext();
-}));
-
-$("clarify-btn").addEventListener("click", (e) => busy(e.target, "Building…", async () => {
-  state.run = await api(`/runs/${state.run._id}/clarify`, { method: "POST", body: { answer: $("clarify-a").value } });
-  renderRun(); renderContext();
-}));
-
-// voice: browser records, our backend forwards to ElevenLabs; the key never reaches the browser
-let recorder = null;
-$("mic-btn").addEventListener("click", async () => {
-  if (recorder && recorder.state === "recording") { recorder.stop(); return; }
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    const chunks = []; recorder = new MediaRecorder(stream);
-    recorder.ondataavailable = (ev) => chunks.push(ev.data);
-    recorder.onstop = async () => {
-      stream.getTracks().forEach((t) => t.stop());
-      $("mic-btn").textContent = "🎙 Speak"; $("mic-status").textContent = "Transcribing…";
-      const fd = new FormData(); fd.append("audio", new Blob(chunks, { type: recorder.mimeType }), "request.webm");
-      try { const { text } = await api("/transcribe", { method: "POST", body: fd }); $("request-text").value = text; $("mic-status").textContent = "Review the transcript, then build."; }
-      catch (err) { $("mic-status").textContent = ""; toast(`Voice failed (${err.message}). Type the request instead.`); }
-    };
-    recorder.start(); $("mic-btn").textContent = "■ Stop"; $("mic-status").textContent = "Listening…";
-  } catch (err) { toast(`Microphone unavailable: ${err.message}`); }
-});
-
 // ---------- brief ----------
 const SECTIONS = [["requirements", "Requirements"], ["current_decisions", "Current decisions"], ["implementation_context", "Implementation context"],
   ["preferences", "Preferences"], ["acceptance_checks", "Acceptance checks"]];
@@ -189,18 +219,19 @@ function citeChips(keys) {
 
 function renderRun() {
   const r = state.run;
-  show("brief-card", !!r?.brief); show("result-card", !!r?.artifact); show("feedback-card", !!r?.artifact);
-  show("clarify", r?.status === "needs_clarification");
-  if (!r) return;
-  if (r.status === "needs_clarification") { $("clarify-q").textContent = r.question; return; }
+  const hasBrief = !!r?.brief;
+  show("brief-card", hasBrief);
+  show("result-card", hasBrief && ["exported", "reviewed"].includes(r.status));
+  show("feedback-card", hasBrief && ["exported", "reviewed"].includes(r.status));
+  if (!hasBrief) return;
   $("run-status").replaceChildren(chip(r.status));
+  $("brief-rev").textContent = r.brief_revision ? `revision ${r.brief_revision} by the agent` : "";
 
-  const stale = r.status === "stale";
-  show("stale", stale);
-  if (stale) {
-    $("stale").replaceChildren(el("strong", {}, "Cited context changed since this brief was prepared. "), r.stale_reason || "",
+  show("stale", r.status === "stale");
+  if (r.status === "stale") {
+    $("stale").replaceChildren(el("strong", {}, "Cited context changed since this brief was prepared. "),
       el("ul", {}, (r.changes || []).map((c) => el("li", {}, `${c.key} (${c.type}): ${c.change}`))),
-      el("button", { onclick: (ev) => busy(ev.target, "Refreshing…", async () => { state.run = await api(`/runs/${r._id}/refresh`, { method: "POST" }); renderRun(); renderContext(); }) }, "Refresh brief"));
+      el("button", { onclick: () => tell(`The brief is stale: ${(r.changes || []).map((c) => `${c.key} ${c.change}`).join("; ")}. Please get the project context again and save an updated brief.`) }, "Ask the agent to redo it"));
   }
 
   const b = r.brief;
@@ -218,27 +249,23 @@ function renderRun() {
   if (!qs.length) root.append(el("p", { class: "muted" }, "None"));
   qs.forEach((q, i) => root.append(el("div", { class: `question ${q.blocking ? "blocking" : ""}` },
     q.blocking ? chip("blocking") : chip("non-blocking"), " ", q.text, citeChips(q.sources),
-    el("div", { class: "row" }, el("input", { id: `qa-${i}`, placeholder: "Answer" }),
-      el("button", { class: "secondary", onclick: (ev) => answerQuestion(ev.target, i) }, "Answer")))));
-  if ((r.answers || []).length || r.clarification) {
-    root.append(el("h3", {}, "Resolved"), el("ul", {}, [r.clarification, ...(r.answers || [])].filter(Boolean).map((a) => el("li", {}, `${a.question} → ${a.answer}`))));
-  }
+    el("div", { class: "row" }, el("input", { id: `qa-${i}`, placeholder: "Answer (sent to the agent)" }),
+      el("button", { class: "secondary", onclick: () => { const a = $(`qa-${i}`).value.trim(); if (a) tell(`Answer to "${q.text}": ${a}`); } }, "Answer")))));
+  if ((r.answers || []).length) root.append(el("h3", {}, "Resolved"), el("ul", {}, r.answers.map((a) => el("li", {}, `${a.question} → ${a.answer}`))));
   if ((b.assumptions || []).length) root.append(el("h3", {}, "Assumptions"), el("ul", {}, b.assumptions.map((a) => el("li", {}, a))));
   if ((b.citation_warnings || []).length) root.append(el("p", { class: "uncited" }, `Dropped unknown citations: ${b.citation_warnings.join(", ")}`));
   root.querySelectorAll("[contenteditable]").forEach((n) => n.addEventListener("input", () => show("save-brief-btn")));
   show("save-brief-btn", false);
 
-  if (r.artifact) {
-    $("artifact").srcdoc = r.artifact.html;
-    $("checks").replaceChildren(...(r.checks || []).map((c) => el("li", {}, chip(c.result), " ", c.name, " ",
-      el("span", { class: "chip" }, c.method === "static" ? "static check" : "model review"),
-      c.evidence ? el("span", { class: "evidence" }, c.evidence) : null)));
-  }
-}
-
-async function answerQuestion(btn, i) {
-  const answer = $(`qa-${i}`).value.trim(); if (!answer) return;
-  await busy(btn, "Updating…", async () => { state.run = await api(`/runs/${state.run._id}/answers`, { method: "POST", body: { answers: [{ index: i, answer }] } }); renderRun(); renderContext(); });
+  const checks = b.acceptance_checks || [];
+  const recorded = Object.fromEntries((r.checks || []).map((c, i) => [i, c]));
+  $("outcome-checks").replaceChildren(...checks.map((c, i) => {
+    const sel = el("select", { id: `oc-${i}` }, ...["not_run", "passed", "failed"].map((v) => el("option", { value: v }, v.replace("_", " "))));
+    sel.value = recorded[i]?.result || "not_run";
+    const ev = el("input", { id: `oe-${i}`, placeholder: "Evidence (what you saw)" }); ev.value = recorded[i]?.evidence || "";
+    return el("li", {}, sel, c.text, citeChips(c.sources), ev);
+  }));
+  if (!checks.length) $("outcome-checks").append(el("li", { class: "muted" }, "The brief has no acceptance checks."));
 }
 
 $("save-brief-btn").addEventListener("click", (e) => busy(e.target, "Saving…", async () => {
@@ -251,42 +278,47 @@ $("save-brief-btn").addEventListener("click", (e) => busy(e.target, "Saving…",
   renderRun(); toast("Brief saved.");
 }));
 
-$("export-btn").addEventListener("click", (e) => busy(e.target, "Exporting…", async () => {
-  const md = await api(`/runs/${state.run._id}/export`);
+$("export-btn").addEventListener("click", (e) => busy(e.target, "Rechecking memory…", async () => {
+  let md;
+  try { md = await api(`/runs/${state.run._id}/export`); }
+  catch (err) { if (err.status === 409) { state.run = await api(`/runs/${state.run._id}`); renderRun(); } throw err; }
   const a = el("a", { href: URL.createObjectURL(new Blob([md], { type: "text/markdown" })), download: "promptforge-brief.md" });
   a.click(); URL.revokeObjectURL(a.href);
-  try { await navigator.clipboard.writeText(md); toast("Brief downloaded and copied to clipboard."); } catch { toast("Brief downloaded."); }
-  state.run = await api(`/runs/${state.run._id}`); renderRun();
+  try { await navigator.clipboard.writeText(md); } catch { /* clipboard blocked */ }
+  show("handoff");
+  state.run = await api(`/runs/${state.run._id}`); renderRun(); await loadContext();
 }));
 
-$("run-btn").addEventListener("click", (e) => busy(e.target, "Rechecking memory and generating…", async () => {
-  try { state.run = await api(`/runs/${state.run._id}/execute`, { method: "POST" }); }
-  catch (err) { if (err.status === 409) state.run = await api(`/runs/${state.run._id}`); renderRun(); throw err; }
-  renderRun(); await loadContext();
+$("outcome-btn").addEventListener("click", (e) => busy(e.target, "Saving…", async () => {
+  const n = (state.run.brief.acceptance_checks || []).length;
+  const results = [...Array(n).keys()].map((i) => ({ index: i, result: $(`oc-${i}`).value, evidence: $(`oe-${i}`).value }));
+  state.run = await api(`/runs/${state.run._id}/outcome`, { method: "POST", body: { results, tool: $("outcome-tool").value || null } });
+  renderRun(); toast("Result recorded as outcome evidence.");
 }));
 
 // ---------- feedback -> proposed lesson -> approval ----------
-$("feedback-btn").addEventListener("click", (e) => busy(e.target, "Thinking…", async () => {
-  const r = await api(`/runs/${state.run._id}/feedback`, { method: "POST", body: { text: $("feedback-text").value } });
-  renderProposal(r);
+$("feedback-btn").addEventListener("click", (e) => busy(e.target, "Saving…", async () => {
+  const text = $("feedback-text").value.trim(); if (!text) throw new Error("Write the feedback first.");
+  if (state.conversation && !$("feedback-lesson").value.trim()) { tell(`Feedback on the result: ${text}`); return; }
+  const r = await api(`/runs/${state.run._id}/feedback`, { method: "POST", body: { text, lesson: $("feedback-lesson").value } });
+  renderProposal(r); await loadContext();
 }));
 
 function renderProposal(r) {
   const box = $("proposal"); box.replaceChildren();
-  if (!r.proposed) { box.append(el("p", { class: "muted" }, r.reason)); return; }
+  if (!r.proposed) { box.append(el("p", { class: "muted" }, "Feedback saved. No lesson was proposed.")); return; }
   const l = r.proposed;
-  const canTeam = ["publisher", "admin"].includes(state.me.role);
+  const allowed = r.scopes_allowed || ["personal"];
   const text = el("textarea", { rows: 2 }); text.value = l.text;
+  const radio = (value, label) => el("label", { title: allowed.includes(value) ? "" : "Requires publisher or admin role" },
+    el("input", { type: "radio", name: "scope", value, checked: value === "personal", disabled: !allowed.includes(value) }), label);
   box.append(el("div", { class: "proposal" },
     el("strong", {}, "Suggested lesson"), " ", chip("proposed"), text,
-    l.duplicate_of ? el("p", { class: "uncited" }, `Looks like a duplicate of an existing lesson (${l.duplicate_of}).`) : null,
+    r.duplicate_of ? el("p", { class: "uncited" }, `Looks like a duplicate of an existing lesson (${r.duplicate_of}).`) : null,
     (l.conflicts || []).length ? el("div", { class: "callout warn" }, el("strong", {}, "Conflicts with: "),
       el("ul", {}, l.conflicts.map((c) => el("li", {}, `${c.type}: ${c.text}`)))) : null,
-    el("p", { class: "hint" }, `Evidence: your feedback on run ${l.evidence_run_id.slice(0, 8)}. Who should this apply to?`),
-    el("div", { class: "scopes" },
-      el("label", {}, el("input", { type: "radio", name: "scope", value: "personal", checked: true }), "Just me"),
-      el("label", {}, el("input", { type: "radio", name: "scope", value: "project" }), "This project"),
-      el("label", { title: canTeam ? "" : "Requires publisher or admin role" }, el("input", { type: "radio", name: "scope", value: "team", disabled: !canTeam }), "Whole team")),
+    el("p", { class: "hint" }, "Who should this apply to?"),
+    el("div", { class: "scopes" }, radio("personal", "Just me"), radio("project", "This project"), radio("team", "Whole team")),
     el("div", { class: "row" },
       el("button", { class: "secondary", onclick: (ev) => busy(ev.target, "…", async () => { await api(`/lessons/${l._id}/reject`, { method: "POST" }); box.replaceChildren(el("p", { class: "muted" }, "Rejected. Nothing was remembered.")); await loadContext(); }) }, "Don't remember"),
       el("span", { class: "spacer" }),
@@ -296,5 +328,8 @@ function renderProposal(r) {
         box.replaceChildren(el("p", {}, `Remembered at ${scope} scope. The next relevant request will cite it.`)); await loadContext();
       }) }, "Approve lesson"))));
 }
+
+// lessons approved by voice show up in the sidebar
+setInterval(() => { if (state.conversation) loadContext().catch(() => {}); }, 5000);
 
 init().catch((e) => toast(e.message));

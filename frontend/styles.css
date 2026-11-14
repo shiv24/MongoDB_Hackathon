@@ -69,3 +69,13 @@ summary { cursor: pointer; color: var(--accent); }
 .proposal .scopes input { width: auto; }
 .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg);
   padding: 10px 16px; border-radius: 8px; max-width: min(90vw, 560px); font-size: 14px; z-index: 5; }
+.transcript { list-style: none; padding: 0; margin: 12px 0 0; max-height: 260px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.transcript li { padding: 6px 10px; font-size: 14px; border-bottom: 1px solid var(--border); }
+.transcript li:last-child { border-bottom: 0; }
+.transcript li.agent { background: var(--cite); }
+.transcript .who { font-size: 11px; font-weight: 600; color: var(--muted); display: block; }
+pre { white-space: pre-wrap; word-break: break-word; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font-size: 13px; }
+code { font-size: 13px; }
+.checks select { width: auto; margin-right: 6px; }
+.checks input { margin-top: 4px; }
+#feedback-lesson { margin-top: 8px; }

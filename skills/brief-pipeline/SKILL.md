@@ -1,29 +1,25 @@
 ---
 name: brief-pipeline
-description: PromptForge's request → context → cited brief → execute → learn pipeline and its rules. Use when implementing or changing anything in backend/app/agent/, brief assembly, execution, or turning feedback into lessons.
+description: PromptForge's ElevenLabs-agent pipeline (context tool → cited brief → export → outcome → feedback → approved lesson) and its rules. Use when changing the agent prompt or tools (scripts/setup_elevenlabs_agent.py, backend/app/routes/agent_tools.py), brief parsing/export, or lesson proposals.
 ---
 
 # Brief pipeline
 
-Spec: README.md. Code map: docs/DESIGN.md "Pipeline". Orchestration lives in `backend/app/agent/pipeline.py`; Claude calls go through `agent/llm.py` (`parse` for structured output, `generate_text` for streamed HTML).
+Spec: README.md. Code map: docs/DESIGN.md "Pipeline". Stack is Atlas + partner resources only (ElevenLabs, Voyage, LangSmith): do not add other model APIs.
 
-| Step | Module | Rule |
+| Step | Where | Rule |
 |---|---|---|
-| Intent | `intent.py` | Resolve project, document, feature. Two plausible matches → return ONE clarifying question, status `needs_clarification` |
-| Retrieve | `retrieve.py` | Embed request; search source chunks, `current` decisions, `approved` lessons through `repo/` only. Scope pre-filters come from `repo/scope.py` |
-| Brief | `brief.py` | Sections: objective, requirements, current_decisions, implementation_context, preferences, acceptance_checks, open_questions, provenance |
-| Execute | `execute.py` | Recheck every provenance entry's current status and revision first. Anything changed → stop, mark run `stale`, return the change |
-| Validate | `validate.py` | Each acceptance check → `passed` / `failed` / `not_run`. Never hide failed or unrun checks |
-| Learn | `learn.py` | Feedback → one proposed lesson with evidence; flag duplicates (similarity > 0.92) and conflicts. Not used until approved with a scope |
+| Clarify | agent prompt | Ask ONE question only if two documents/features plausibly fit |
+| Context | `get_project_context` → `pipeline.start_draft` → `retrieve.gather` | Scoped `$vectorSearch` + Voyage rerank; returns keyed `[S#] [D#] [L#]` context and a `run_id` |
+| Brief | `save_brief` → `brief.from_agent` + `validate_citations` | Items are strings ending in citation keys; unknown keys dropped, uncited flagged; blocking questions → `needs_answers` |
+| Export | `pipeline.export` → `recheck.recheck` | Cited memory changed → 409 with `changes`, run `stale`; otherwise Markdown with provenance |
+| Result | `pipeline.record_outcome` | User-reported per acceptance check, `method: user_review`; unmarked = `not_run` |
+| Learn | `record_feedback` → `pipeline.feedback` | Proposes; never approves. `approve_lesson` only after an explicit yes |
 
-## Brief rules
-- Every instruction cites a source chunk, decision or lesson **revision**.
-- A preference never overrides a requirement. A newer chat message never supersedes an approved decision. Unresolved conflict → `open_questions`.
-- Keep every requirement even if it makes the brief longer.
-- Unknown file or interface → flag it; never invent one.
-- The exported Markdown must be usable in another coding tool with no PromptForge context.
+## Brief rules (also in the agent prompt; keep them in sync)
+- Every instruction cites a source chunk, decision or lesson key.
+- A preference never overrides a requirement; conversation never silently supersedes a decision; conflicts → questions.
+- Keep every requirement. Never invent files or interfaces.
 
-## Learning rules
-- Learning changes the context given to the model, not model weights.
-- A vote or thumbs-up on a whole artifact is a preference signal, not proof that each lesson caused it. Keep lessons tentative until a person approves them.
-- Track `task_tags` and `model` on lessons; do not assume a lesson works everywhere.
+## Changing tools
+Tool JSON lives in `scripts/setup_elevenlabs_agent.py`; the matching pydantic bodies in `routes/agent_tools.py`. Change both, then re-run the setup script (it creates a fresh agent and prints the new `ELEVENLABS_AGENT_ID`).

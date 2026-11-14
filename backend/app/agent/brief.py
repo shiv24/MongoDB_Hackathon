@@ -1,43 +1,13 @@
-"""Step 3: assemble the cited brief, and render it as Markdown for export."""
-from pydantic import BaseModel, Field
+"""Step 3: the cited brief. The ElevenLabs agent writes it (via the save_brief tool); this module
+normalizes, validates citations, and renders Markdown for export to a coding tool (e.g. Claude Code)."""
+import re
 
-from app.agent import llm
-
-
-class Cited(BaseModel):
-    text: str
-    sources: list[str] = Field(description="Citation keys such as S1, D2, L1 that support this item")
-
-
-class Question(BaseModel):
-    text: str
-    blocking: bool = Field(description="True if the work cannot be done correctly without an answer")
-    sources: list[str]
-
-
-class BriefOut(BaseModel):
-    objective: str
-    requirements: list[Cited]
-    current_decisions: list[Cited]
-    implementation_context: list[Cited]
-    preferences: list[Cited]
-    acceptance_checks: list[Cited] = Field(description="Concrete, checkable statements about the result")
-    open_questions: list[Question]
-    assumptions: list[str]
-
-
-SYSTEM = """You assemble a brief that another AI model or coding tool will execute. The brief must be self-contained.
-Rules:
-- Every requirement, decision, implementation note and preference cites the context keys it comes from (S = source chunk, D = team decision, L = approved lesson). Use only keys you were given.
-- Requirements come from sources. Keep EVERY applicable requirement, even if the brief gets longer.
-- Decisions are authoritative. A preference (L) never overrides a requirement or a decision. A request phrase never silently supersedes a decision.
-- If sources/decisions conflict, or a needed fact is missing (e.g. a required field is undefined), add an open question instead of guessing. Mark it blocking if the work would likely be wrong without the answer.
-- Never invent files, interfaces, or services that are not in the context; if one seems needed, ask an open question.
-- Acceptance checks are concrete and verifiable by inspecting the result (e.g. "the page has a mobile layout below 600px width").
-- Assumptions list anything you assumed that the user should confirm. Keep each item to one or two sentences."""
+CITE = re.compile(r"\[([SDL]\d+)\]")
+SECTIONS = ("requirements", "current_decisions", "implementation_context", "preferences", "acceptance_checks")
 
 
 def context_block(entries: list[dict]) -> str:
+    """Context as the agent sees it: one keyed entry per source chunk, decision, or lesson."""
     lines = []
     for e in entries:
         if e["type"] == "source":
@@ -49,15 +19,33 @@ def context_block(entries: list[dict]) -> str:
     return "\n\n".join(lines) or "(no context found)"
 
 
-def assemble(request: str, intent: dict, entries: list[dict], answers: list[dict] | None = None) -> tuple[dict, str]:
-    user = (f"Request: {request}\nResolved feature: {intent['feature']}\n"
-            f"Referenced documents: {', '.join(intent.get('documents') or []) or '(none)'}\n\n"
-            f"Context:\n{context_block(entries)}\n")
-    if answers:
-        user += "\nThe user already answered these questions; use the answers and do not ask them again:\n"
-        user += "\n".join(f"- Q: {a['question']}\n  A: {a['answer']}" for a in answers)
-    out, model = llm.parse(SYSTEM, user, BriefOut, effort="medium")
-    return validate_citations(out.model_dump(), entries), model
+def _item(text: str) -> dict:
+    keys = list(dict.fromkeys(CITE.findall(text)))
+    clean = re.sub(r"\s*\[[SDL]\d+\]", "", text).strip()
+    return {"text": clean, "sources": keys}
+
+
+def from_agent(payload: dict) -> dict:
+    """Agent tool input (lists of strings with [S1]-style citations) -> brief dict."""
+    brief = {"objective": (payload.get("objective") or "").strip()}
+    for section in SECTIONS:
+        brief[section] = [_item(t) for t in payload.get(section) or [] if t and t.strip()]
+    brief["open_questions"] = (
+        [{**_item(t), "blocking": True} for t in payload.get("blocking_questions") or [] if t and t.strip()]
+        + [{**_item(t), "blocking": False} for t in payload.get("other_questions") or [] if t and t.strip()])
+    brief["assumptions"] = [t.strip() for t in payload.get("assumptions") or [] if t and t.strip()]
+    if not brief["objective"]:
+        raise ValueError("brief needs an objective")
+    return brief
+
+
+def parse_resolved(lines: list[str]) -> list[dict]:
+    out = []
+    for line in lines or []:
+        q, _, a = line.partition("=>")
+        if q.strip() and a.strip():
+            out.append({"question": q.strip(), "answer": a.strip()})
+    return out
 
 
 def validate_citations(brief: dict, entries: list[dict]) -> dict:

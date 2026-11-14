@@ -1,41 +1,46 @@
-from app.agent import brief, execute
+import pytest
+
+from app.agent import brief
 
 ENTRIES = [{"key": "S1", "type": "source", "id": "s", "revision": 2, "title": "Spec", "text": "fields"},
            {"key": "D1", "type": "decision", "id": "d", "revision": 1, "owner_id": "alice", "text": "Use Lumen ID"},
            {"key": "L1", "type": "lesson", "id": "l", "revision": 1, "scope": "project", "text": "Mobile layout"}]
 
 
-def _brief():
+def _agent_payload():
     return {"objective": "Build signup",
-            "requirements": [{"text": "Collect email", "sources": ["S1", "S9"]}, {"text": "Be nice", "sources": []}],
-            "current_decisions": [{"text": "Lumen ID", "sources": ["D1"]}], "implementation_context": [],
-            "preferences": [{"text": "Mobile layout", "sources": ["L1"]}],
-            "acceptance_checks": [{"text": "Has mobile layout", "sources": ["L1"]}],
-            "open_questions": [{"text": "Company size values?", "blocking": True, "sources": ["S1"]}],
-            "assumptions": []}
+            "requirements": ["Collect work email [S1] [S9]", "Be nice"],
+            "current_decisions": ["Use Lumen ID for account creation [D1]"],
+            "preferences": ["Include a mobile layout [L1]"],
+            "acceptance_checks": ["The form has an email field [S1]"],
+            "blocking_questions": ["What are the company size values? [S1]"],
+            "other_questions": ["Should we show a logo?"],
+            "assumptions": ["Desktop first"]}
 
 
-def test_unknown_citations_dropped_and_uncited_flagged():
-    b = brief.validate_citations(_brief(), ENTRIES)
-    assert b["requirements"][0]["sources"] == ["S1"] and b["citation_warnings"] == ["S9"]
+def test_from_agent_parses_citations_and_questions():
+    b = brief.validate_citations(brief.from_agent(_agent_payload()), ENTRIES)
+    assert b["requirements"][0] == {"text": "Collect work email", "sources": ["S1"], "uncited": False}
     assert b["requirements"][1]["uncited"] is True
+    assert b["citation_warnings"] == ["S9"]
+    assert [q["blocking"] for q in b["open_questions"]] == [True, False]
     assert brief.cited_keys(b) == {"S1", "D1", "L1"}
+
+
+def test_from_agent_requires_objective():
+    with pytest.raises(ValueError):
+        brief.from_agent({"objective": " "})
+
+
+def test_resolved_questions():
+    assert brief.parse_resolved(["Company size? => 1-10, 11-50, 51+", "junk"]) == [
+        {"question": "Company size?", "answer": "1-10, 11-50, 51+"}]
 
 
 def test_markdown_export_has_citations_and_provenance():
     run = {"request": "build signup", "intent": {"feature": "Signup page"},
-           "brief": brief.validate_citations(_brief(), ENTRIES), "provenance": ENTRIES,
+           "brief": brief.validate_citations(brief.from_agent(_agent_payload()), ENTRIES), "provenance": ENTRIES,
            "answers": [{"question": "Q?", "answer": "A."}]}
     md = brief.to_markdown(run)
-    assert "- Collect email [S1]" in md and "*(uncited)*" in md and "**Blocking**" in md
+    assert "- Collect work email [S1]" in md and "*(uncited)*" in md and "**Blocking**" in md
     assert "[D1] team decision `d` revision 1" in md and "## Resolved questions" in md
-
-
-def test_sanitize_strips_scripts_and_handlers():
-    html, notes = execute.sanitize('<html><body onload="x()"><script>alert(1)</script><a href="javascript:x">a</a></body></html>')
-    assert "<script" not in html and "onload" not in html and "javascript:" not in html
-    assert len(notes) == 2
-
-
-def test_extract_html_from_fenced_output():
-    assert execute.extract_html("Here:\n```html\n<!doctype html><html></html>\n```").startswith("<!doctype html>")

@@ -21,51 +21,58 @@
 
   <div class="layout">
     <main class="flow">
-      <!-- 1. Request -->
+      <!-- 1. Request: conversation with the ElevenLabs agent -->
       <section class="card" id="request-card">
         <h2><span class="step">1</span> Request</h2>
-        <p class="hint">Say or type what you want built. PromptForge brings the project's context.</p>
-        <textarea id="request-text" rows="3" placeholder="On that project doc, can we build the signup page? Keep it consistent with what we decided."></textarea>
+        <p class="hint">Talk to the PromptForge agent. It pulls your project's context from Atlas and writes a cited brief.</p>
         <div class="row">
-          <button id="mic-btn" class="secondary" type="button" title="Speak your request (ElevenLabs speech-to-text)">🎙 Speak</button>
-          <span id="mic-status" class="muted"></span>
+          <button id="talk-btn" type="button">🎙 Start talking</button>
+          <button id="type-btn" class="secondary" type="button">Type instead</button>
+          <span id="agent-status" class="muted"></span>
           <span class="spacer"></span>
-          <button id="build-btn" type="button">Build brief</button>
+          <button id="end-btn" class="secondary hidden" type="button">End conversation</button>
         </div>
-        <div id="clarify" class="callout hidden">
-          <strong>One question first:</strong> <span id="clarify-q"></span>
-          <div class="row"><input id="clarify-a" placeholder="Your answer"><button id="clarify-btn" type="button">Answer</button></div>
+        <ul id="transcript" class="transcript hidden"></ul>
+        <div id="type-row" class="row hidden">
+          <input id="type-input" placeholder="On that project doc, can we build the signup page? Keep it consistent with what we decided.">
+          <button id="send-btn" type="button">Send</button>
         </div>
       </section>
 
-      <!-- 2+3. Brief with context -->
+      <!-- 2. Brief with context -->
       <section class="card hidden" id="brief-card">
-        <h2><span class="step">2</span> Brief <span id="run-status" class="chip"></span></h2>
+        <h2><span class="step">2</span> Brief <span id="run-status" class="chip"></span> <span id="brief-rev" class="muted"></span></h2>
         <div id="stale" class="callout warn hidden"></div>
         <div id="brief"></div>
         <div class="row">
           <button id="save-brief-btn" class="secondary hidden" type="button">Save edits</button>
           <span class="spacer"></span>
-          <button id="export-btn" class="secondary" type="button">Export Markdown</button>
-          <button id="run-btn" type="button">Run with model</button>
+          <button id="export-btn" type="button">Export for Claude Code</button>
+        </div>
+        <div id="handoff" class="callout hidden">
+          <strong>Brief exported.</strong> It was downloaded as <code>promptforge-brief.md</code> and copied to your clipboard. In your project folder, run:
+          <pre id="handoff-cmd">claude "Implement the brief in promptforge-brief.md. Follow every requirement and decision, and check each acceptance check."</pre>
         </div>
       </section>
 
-      <!-- 4. Result -->
+      <!-- 3. Result review: outcome evidence -->
       <section class="card hidden" id="result-card">
         <h2><span class="step">3</span> Result</h2>
-        <p class="hint">Generated HTML renders in a sandboxed frame with scripts disabled.</p>
-        <iframe id="artifact" sandbox="" title="Generated artifact"></iframe>
-        <h3>Validation evidence</h3>
-        <ul id="checks" class="checks"></ul>
+        <p class="hint">After your coding tool builds it, record which acceptance checks the result actually meets. Checks you don't mark stay "not run".</p>
+        <ul id="outcome-checks" class="checks"></ul>
+        <div class="row">
+          <input id="outcome-tool" placeholder="Built with (e.g. Claude Code)">
+          <button id="outcome-btn" type="button">Record result</button>
+        </div>
       </section>
 
-      <!-- 5. Feedback -->
+      <!-- 4. Feedback -->
       <section class="card hidden" id="feedback-card">
         <h2><span class="step">4</span> Feedback</h2>
-        <p class="hint">Explain a correction. PromptForge suggests a lesson; nothing is remembered until you approve it and choose who it applies to.</p>
-        <textarea id="feedback-text" rows="2" placeholder="We always need a mobile layout."></textarea>
-        <div class="row"><span class="spacer"></span><button id="feedback-btn" type="button">Suggest a lesson</button></div>
+        <p class="hint">Tell the agent what was wrong. It suggests a lesson and asks who it applies to. Or write it here. Nothing is remembered until it's approved.</p>
+        <textarea id="feedback-text" rows="2" placeholder="It broke on my phone."></textarea>
+        <input id="feedback-lesson" placeholder="Lesson to remember (optional), e.g. Always include a mobile layout below 600px.">
+        <div class="row"><span class="spacer"></span><button id="feedback-btn" type="button">Suggest lesson</button></div>
         <div id="proposal"></div>
       </section>
     </main>
@@ -73,7 +80,7 @@
     <aside class="sidebar">
       <section class="card">
         <h2>Project context</h2>
-        <p class="hint">Everything here is scoped to your team and project. Highlighted items shaped the current brief.</p>
+        <p class="hint">Scoped to your team and project. Highlighted items shaped the current brief.</p>
         <h3>Sources</h3>
         <ul id="sources" class="items"></ul>
         <details>
@@ -101,6 +108,6 @@
   </div>
 
   <div id="toast" class="toast hidden" role="status"></div>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>

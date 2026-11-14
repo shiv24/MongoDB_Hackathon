@@ -37,3 +37,4 @@ def install(app) -> None:
     app.add_exception_handler(NotFound, handler(404))
     app.add_exception_handler(Conflict, handler(409))
     app.add_exception_handler(ValueError, handler(400))
+    app.add_exception_handler(RuntimeError, handler(503))  # missing configuration / upstream unavailable

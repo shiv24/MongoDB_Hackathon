@@ -9,35 +9,25 @@ from app.session import current
 router = APIRouter(prefix="/runs")
 
 
-class RunIn(BaseModel):
-    project_id: str
-    request: str
-
-
-class Clarify(BaseModel):
-    answer: str
-
-
-class Answer(BaseModel):
-    index: int
-    answer: str
-
-
-class Answers(BaseModel):
-    answers: list[Answer]
-
-
 class BriefIn(BaseModel):
     brief: dict
 
 
+class CheckResult(BaseModel):
+    index: int
+    result: str
+    evidence: str | None = None
+
+
+class OutcomeIn(BaseModel):
+    results: list[CheckResult]
+    tool: str | None = None
+    notes: str | None = None
+
+
 class FeedbackIn(BaseModel):
     text: str
-
-
-@router.post("")
-def create_run(request: Request, body: RunIn):
-    return pipeline.create(current(request), body.project_id, body.request)
+    lesson: str | None = None
 
 
 @router.get("/{run_id}")
@@ -45,24 +35,9 @@ def get_run(request: Request, run_id: str):
     return runs.get(current(request), run_id)
 
 
-@router.post("/{run_id}/clarify")
-def clarify(request: Request, run_id: str, body: Clarify):
-    return pipeline.clarify(current(request), run_id, body.answer)
-
-
-@router.post("/{run_id}/answers")
-def answer(request: Request, run_id: str, body: Answers):
-    return pipeline.answer_questions(current(request), run_id, [a.model_dump() for a in body.answers])
-
-
 @router.patch("/{run_id}/brief")
 def edit_brief(request: Request, run_id: str, body: BriefIn):
     return pipeline.edit_brief(current(request), run_id, body.brief)
-
-
-@router.post("/{run_id}/refresh")
-def refresh(request: Request, run_id: str):
-    return pipeline.refresh(current(request), run_id)
 
 
 @router.get("/{run_id}/export", response_class=PlainTextResponse)
@@ -70,11 +45,11 @@ def export_brief(request: Request, run_id: str):
     return PlainTextResponse(pipeline.export(current(request), run_id), media_type="text/markdown")
 
 
-@router.post("/{run_id}/execute")
-def execute(request: Request, run_id: str):
-    return pipeline.execute(current(request), run_id)
+@router.post("/{run_id}/outcome")
+def record_outcome(request: Request, run_id: str, body: OutcomeIn):
+    return pipeline.record_outcome(current(request), run_id, [r.model_dump() for r in body.results], body.tool, body.notes)
 
 
 @router.post("/{run_id}/feedback")
 def feedback(request: Request, run_id: str, body: FeedbackIn):
-    return pipeline.feedback(current(request), run_id, body.text)
+    return pipeline.feedback(current(request), run_id, body.text, body.lesson)

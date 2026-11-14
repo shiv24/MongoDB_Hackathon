@@ -30,5 +30,4 @@ Check every change against these. They are the README's "Memory you can govern" 
 - [ ] `execute` rechecks provenance before calling the model.
 
 ## Secrets and rendering
-- [ ] API keys (Anthropic, Voyage, ElevenLabs) never reach the browser.
-- [ ] Any generated HTML renders only in `<iframe sandbox="">`.
+- [ ] API keys (ElevenLabs, Voyage, LangSmith) never reach the browser; agent tool identity comes only from the `X-PF-Session` token.

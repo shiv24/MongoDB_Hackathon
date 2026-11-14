@@ -3,7 +3,7 @@ from datetime import timedelta
 
 import pytest
 
-from app.agent import execute
+from app.agent.recheck import recheck
 from app.db import now
 from app.errors import Forbidden, NotFound
 from app.repo import context, lessons, runs
@@ -109,10 +109,10 @@ def test_recheck_detects_superseded_decision_and_retired_lesson(db):
                      "implementation_context": [], "preferences": [], "acceptance_checks": [], "open_questions": []},
            "provenance": [{"key": "D1", "type": "decision", "id": d["_id"], "revision": 1},
                           {"key": "L1", "type": "lesson", "id": l["_id"], "revision": 1}]}
-    assert execute.recheck(ALICE, run) == []
+    assert recheck(ALICE, run) == []
     context.supersede_decision(ALICE, d["_id"], "Use Lumen ID v2.")
     lessons.retire(ALICE, l["_id"])
-    changes = {c["key"]: c["change"] for c in execute.recheck(ALICE, run)}
+    changes = {c["key"]: c["change"] for c in recheck(ALICE, run)}
     assert changes == {"D1": "superseded", "L1": "now retired"}
 
 
