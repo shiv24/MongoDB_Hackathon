@@ -33,67 +33,41 @@ ELEVENLABS_VOICE_ID=optional_voice_id
 ## Make the video
 
 ```bash
-npm run voice    # generate narration → public/vo/<scene>.mp3
+node scripts/capture.mjs http://localhost:8000   # optional: re-capture UI screenshots → public/shots/
+npm run voice    # ElevenLabs narration → public/vo/<scene>.mp3 and clip lengths in src/vo.json
 npm run render   # write out/promptforge-demo.mp4 (1920×1080, with voice)
 ```
 
-To preview and scrub the timeline in the browser while you edit:
+`capture.mjs` drives the running app through the judge showcase (Alice creates a prompt, approves a lesson for the project; Bob gets it in a fresh session) and screenshots each step. It needs a server that can create briefs (OpenAI key set). The committed screenshots were captured from the offline preview with vector search stubbed, so retrieval in those shots is not Atlas-ranked.
 
-```bash
-npm run editor
-```
-
-`npm run typecheck` checks the TypeScript without rendering.
+To preview and scrub the timeline in the browser while you edit: `npm run editor`. `npm run typecheck` checks the TypeScript without rendering.
 
 ## Change the narration
 
-1. Edit the lines in `src/narration.json`. There is one line per scene.
-2. Regenerate only what changed, for example `node scripts/voiceover.mjs brief`. Run `npm run voice` with no arguments to regenerate all scenes.
-3. Run `npm run render` again.
+The script is a condensed version of the project description, one line per scene in `src/narration.json`:
 
-Each clip starts when its scene starts. Keep each line under its scene's length, at roughly 2.5 words per second:
+| Scene | Key | Shows |
+|---|---|---|
+| Hook | `hook` | The problem and tagline |
+| Request | `request` | Voice/typed request; specs, decisions, preferences from Atlas |
+| Brief | `brief` | Cited instructions, assumptions, Markdown export / website preview |
+| Governance | `govern` | Proposed lesson + scope choice; versioned decisions, exclusions, audit log |
+| Team | `team` | Alice's approved lesson in Bob's fresh session |
+| Accessibility | `access` | Voice input; accessibility standards in every brief |
+| Close | `close` | Logo and stack |
 
-| Scene | Key | Length | Max words (approx.) |
-|---|---|---|---|
-| Hook | `hook` | 5s | 12 |
-| Request | `request` | 9s | 21 |
-| Retrieve context | `context` | 13s | 31 |
-| Cited brief | `brief` | 13s | 31 |
-| Result | `result` | 12s | 28 |
-| Close | `close` | 8s | 18 |
-
-To check a clip's real length:
-
-```bash
-node_modules/@ffmpeg-installer/*/ffmpeg -i public/vo/brief.mp3 2>&1 | grep Duration
-```
-
-If a clip runs over, shorten the line or lengthen the scene in `src/project.tsx`. Each scene is declared as `scene("<key>", <seconds>, ...)`. Change the seconds; the scenes after it shift automatically.
-
-## How it fits together
-
-| File | Purpose |
-|---|---|
-| `src/narration.json` | Voiceover script, one line per scene |
-| `scripts/voiceover.mjs` | Calls the ElevenLabs TTS API, writes the MP3s and `src/vo.json` (the list of scenes that have audio) |
-| `src/project.tsx` | Revideo scenes, animation and timing. Each scene plays its MP3 with `<Audio>` |
-| `src/data.ts` | Loads the fixtures and holds the brief lines and checks shown on screen. `HERO_RULE` is the rule highlighted across scenes |
-| `scripts/render.mjs` | Renders the project to `out/` |
-| `public/vo/` | Generated audio (safe to delete and regenerate) |
-| `out/` | Rendered video (gitignored) |
-
-Scenes without an MP3 render silently, so the video always builds, with or without a key.
+Each scene lasts as long as its clip plus 0.35s. **The whole video must stay within 60 seconds**: `src/project.tsx` throws at render time if the clips add up to more. Regenerate one line with `node scripts/voiceover.mjs brief`, then `npm run render`.
 
 ## Troubleshooting
 
 - **`ELEVENLABS_API_KEY missing`**: the key is empty in the root `.env`, or you put it in `video/.env`.
 - **`401`**: the key is wrong or revoked.
-- **`402` / quota error**: the account is out of character credits. The full script is about 1,000 characters.
+- **`402` / quota error**: the account is out of character credits. The full script is about 800 characters.
 - **`404 voice_not_found`**: `ELEVENLABS_VOICE_ID` doesn't exist on your account. Clear it to use the default voice.
 - **Voice cut off at a scene change**: the line is too long for its scene. See "Change the narration" above.
 - **Render fails to import `fixtures.json`**: run commands from `video/`. `scripts/render.mjs` allows Vite to read the repo root.
 
 ## Notes
 
-- The page mockups in the result scene are illustrative and are labelled as such on screen. Swap in real screen recordings of the app with Revideo's `<Video>` before submitting if you can.
+- Screens are real captures of the current UI. The governance board (statuses, audit log) is a diagram of what the app records, not a screenshot.
 - Revideo and its packages are MIT-licensed, so there is no team-size limit.

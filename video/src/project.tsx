@@ -1,329 +1,305 @@
-import { Audio, Circle, Layout, Rect, Txt, TxtProps, makeScene2D } from "@revideo/2d";
-import { ThreadGenerator, all, createRef, makeProject, sequence, useThread, waitFor } from "@revideo/core";
-import {
-  BRIEF, CHECKS_PF, CHECKS_PLAIN, EXCLUDED, HERO_OLD, HERO_RULE, INCLUDED, PROJECT, REQUEST, USER, type Card,
-} from "./data";
-import voiced from "./vo.json";
+import { Audio, Img, Layout, Node, Rect, Txt, TxtProps, makeScene2D } from "@revideo/2d";
+import { ThreadGenerator, all, createRef, easeInOutCubic, makeProject, sequence, useThread, waitFor } from "@revideo/core";
+import { HERO_OLD, HERO_RULE } from "./data";
+import vo from "./vo.json";
 
-// ---------- look ----------
+// ---------- look: matches the app's current UI (frontend/styles.css) ----------
 const C = {
-  bg: "#0d0f14", surface: "#161a22", raised: "#1d222c", border: "#2a303c", text: "#e8eaf0", muted: "#8b93a5",
-  accent: "#748ffc", accentDeep: "#3b5bdb", ok: "#69db7c", bad: "#ff8787", warn: "#ffc078", cite: "#23294a", citeText: "#bac8ff",
-  warnTint: "#3a3020", warnSoft: "#2a2519",
+  bg: "#f5f4ef", surface: "#fffefa", text: "#202c28", muted: "#65716b", border: "#dedfd5",
+  accent: "#245d47", soft: "#e8efe5", lime: "#ddeb9a", warn: "#b36200", warnSoft: "#fbf0dc", bad: "#b42323",
 };
-const FONT = 'Inter, "Helvetica Neue", Arial, sans-serif';
+const SANS = 'Inter, "Helvetica Neue", Arial, sans-serif';
+const SERIF = 'Georgia, "Times New Roman", serif';
 const MONO = '"SF Mono", Menlo, monospace';
 
-/** Place a node by its top-left corner in 1920×1080 screen pixels (Revideo's origin is the centre). */
-const at = (left: number, top: number) => ({ x: left - 960, y: top - 540, offset: [-1, -1] as [number, number] });
-const clip = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1).trimEnd() + "…" : s);
+/** Hard limit: the whole video must stay within 60 seconds. */
+const MAX_TOTAL = 60;
+const PAD = 0.35;
+const clips = vo as Record<string, number>;
+const MIN: Record<string, number> = { hook: 5, request: 8, brief: 10, govern: 11, team: 6.5, access: 6.5, close: 5.5 };
+const len = (name: string) => Math.max(MIN[name], (clips[name] ?? 0) + PAD);
+const total = Object.keys(MIN).reduce((s, n) => s + len(n), 0);
+if (total > MAX_TOTAL) throw new Error(`Video is ${total.toFixed(2)}s; shorten the narration to stay within ${MAX_TOTAL}s`);
 
 function T(props: TxtProps) {
-  return <Txt fontFamily={FONT} fill={C.text} {...props} />;
+  return <Txt fontFamily={SANS} fill={C.text} {...props} />;
 }
-function Cite({ text, hero }: { text: string; hero?: boolean }) {
+function Logo({ size = 26 }: { size?: number }) {
   return (
-    <Rect layout padding={[4, 10]} radius={6} fill={hero ? C.warn : C.cite}>
-      <Txt text={text} fontFamily={MONO} fontSize={18} fontWeight={600} fill={hero ? "#1a1300" : C.citeText} />
+    <Layout layout gap={size * 0.45} alignItems="center">
+      <Rect layout width={size * 1.3} height={size * 1.3} radius={size * 0.4} fill={C.accent} justifyContent="center" alignItems="center">
+        <Txt text="✳" fontSize={size} fill={C.lime} />
+      </Rect>
+      <T text="PromptForge" fontSize={size} fontWeight={700} letterSpacing={-size * 0.03} />
+    </Layout>
+  );
+}
+function Pill({ text, color = "#ffffff", fill = C.accent, size = 24 }: { text: string; color?: string; fill?: string; size?: number }) {
+  return (
+    <Rect layout padding={[size * 0.35, size * 0.7]} radius={999} fill={fill} shadowColor="#1f3a2a33" shadowBlur={18} shadowOffsetY={4}>
+      <T text={text} fontSize={size} fontWeight={600} fill={color} />
     </Rect>
   );
 }
 
-/** Fade nodes in one after another. */
-const reveal = (gap: number, nodes: { opacity: (v: number, d: number) => ThreadGenerator }[], dur = 0.4) =>
-  sequence(gap, ...nodes.map((n) => n.opacity(1, dur)));
-
 /**
- * One scene: header, optional ElevenLabs narration, fade in, run `build`, hold until `len` seconds, fade out.
- * Narration plays only for scenes listed in vo.json (written by scripts/voiceover.mjs).
+ * One scene: brand header, optional ElevenLabs narration from vo.json, fade in, run `build`,
+ * hold until the scene's length (narration + padding), fade out.
  */
-const scene = (name: string, len: number, label: string | null, step: number | null, build: (root: Layout) => ThreadGenerator) =>
+const scene = (name: string, build: (root: Layout) => ThreadGenerator, header = true) =>
   makeScene2D(name, function* (view) {
     view.fill(C.bg);
     const root = createRef<Layout>();
     view.add(
       <Layout ref={root} opacity={0}>
-        {label && (
-          <Rect {...at(80, 46)} layout gap={16} alignItems="center">
-            <Circle size={40} fill={C.accentDeep} layout justifyContent="center" alignItems="center">
-              <T text={String(step)} fontSize={22} fontWeight={700} fill="#fff" />
-            </Circle>
-            <T text={label.toUpperCase()} fontSize={26} fontWeight={600} letterSpacing={1} fill={C.muted} />
-          </Rect>
-        )}
-        <T x={880} y={-472} offsetX={1} fontSize={24} fontWeight={700}>
-          Prompt<Txt fill={C.accent}>Forge</Txt>
-        </T>
+        {header && <Layout layout x={-960 + 70} y={-540 + 58} offset={[-1, 0]}><Logo size={22} /></Layout>}
       </Layout>,
     );
-    if ((voiced as string[]).includes(name)) view.add(<Audio src={`/vo/${name}.mp3`} play />);
+    if (clips[name]) view.add(<Audio src={`/vo/${name}.mp3`} play />);
     const start = useThread().time();
     yield* root().opacity(1, 0.3);
     yield* build(root());
-    yield* waitFor(Math.max(0, len - 0.4 - (useThread().time() - start)));
-    yield* root().opacity(0, 0.4);
+    yield* waitFor(Math.max(0, len(name) - 0.35 - (useThread().time() - start)));
+    yield* root().opacity(0, 0.35);
   });
 
-const caption = (root: Layout, children: any) => {
+/** Caption shown above the screen frame. */
+const caption = (root: Layout, text: string) => {
   const ref = createRef<Txt>();
-  root.add(
-    <T ref={ref} y={460} fontSize={38} fontWeight={600} opacity={0} textAlign="center">
-      {children}
-    </T>,
-  );
+  root.add(<T ref={ref} y={-462} fontFamily={SERIF} fontSize={44} letterSpacing={-1} text={text} opacity={0} />);
   return ref;
 };
 
-// ---------- 1. hook (5s) ----------
-const hook = scene("hook", 5, null, null, function* (root) {
-  const a = createRef<Txt>(), b = createRef<Txt>();
+// ---------- screen frame with a camera over a real UI screenshot ----------
+// Screenshots are 1920×1080 captures of the running app (scripts/capture.mjs).
+const FRAME = { w: 1564, h: 880, y: 70 };
+const BASE = FRAME.h / 1080;
+
+type Screen = { frame: Node; cam: Node; img: Img; hl: (x: number, y: number, w: number, h: number, label?: string) => Rect };
+
+function screen(root: Layout, src: string): Screen {
+  const frame = createRef<Node>(), cam = createRef<Node>(), img = createRef<Img>();
+  // The shadow sits on a separate backing card: a shadow on the clipping Rect hides its animated children.
   root.add(
-    <Layout layout direction="column" alignItems="center" gap={36}>
-      <T ref={a} opacity={0} text="Every AI session starts from zero." fontSize={76} fontWeight={800} />
-      <T ref={b} opacity={0} fontSize={46} fill={C.muted}>
-        PromptForge brings the context <Txt fill={C.accent}>your team already has</Txt>.
+    <Node ref={frame} opacity={0}>
+      <Rect y={FRAME.y} width={FRAME.w} height={FRAME.h} radius={22} fill={C.bg} shadowColor="#1f3a2a22" shadowBlur={60} shadowOffsetY={18} />
+      <Rect y={FRAME.y} width={FRAME.w} height={FRAME.h} radius={22} fill={C.bg} clip stroke={C.border} lineWidth={2}>
+        <Node ref={cam} scale={BASE}>
+          <Img ref={img} src={src} width={1920} height={1080} />
+        </Node>
+      </Rect>
+    </Node>,
+  );
+  /** A highlight box in screenshot pixel coordinates, with an optional tag above it. */
+  const hl = (x: number, y: number, w: number, h: number, label?: string) => {
+    const r = createRef<Rect>();
+    cam().add(
+      <Rect ref={r} x={x + w / 2 - 960} y={y + h / 2 - 540} width={w + 16} height={h + 12} radius={12}
+        stroke={C.warn} lineWidth={5} fill={"#ffb02e18"} opacity={0}>
+        {label && (
+          <Rect layout y={-(h + 12) / 2 - 26} offsetX={-1} x={-(w + 16) / 2} padding={[6, 14]} radius={8} fill={C.warn}>
+            <T text={label} fontSize={22} fontWeight={700} fill="#fff" />
+          </Rect>
+        )}
+      </Rect>,
+    );
+    return r();
+  };
+  return { frame: frame(), cam: cam(), img: img(), hl };
+}
+
+/** Move the camera so screenshot pixel (px, py) is centred, at zoom `z` relative to fit. */
+const look = (s: Screen, px: number, py: number, z: number, d: number) => {
+  // Keep the screenshot filling the frame: never pan past its edges.
+  const hw = FRAME.w / 2 / (BASE * z), hh = FRAME.h / 2 / (BASE * z);
+  px = Math.min(Math.max(px, hw), 1920 - hw);
+  py = Math.min(Math.max(py, hh), 1080 - hh);
+  return all(
+    s.cam.scale(BASE * z, d, easeInOutCubic),
+    s.cam.position([-(px - 960) * BASE * z, -(py - 540) * BASE * z], d, easeInOutCubic),
+  );
+};
+
+// ---------- 1. hook ----------
+const hook = scene("hook", function* (root) {
+  const a = createRef<Txt>(), b = createRef<Txt>(), logo = createRef<Layout>();
+  root.add(
+    <Layout layout direction="column" alignItems="center" gap={34}>
+      <Layout ref={logo} opacity={0}><Logo size={40} /></Layout>
+      <T ref={a} opacity={0} fontFamily={SERIF} fontSize={92} letterSpacing={-3} text="Every AI session starts from zero." />
+      <T ref={b} opacity={0} fontFamily={SERIF} fontSize={54} letterSpacing={-1.5} fill={C.muted}>
+        PromptForge brings the context <Txt fill={C.accent}>your team already has.</Txt>
       </T>
     </Layout>,
   );
-  yield* a().opacity(1, 0.6);
-  yield* waitFor(0.4);
-  yield* b().opacity(1, 0.6);
-});
+  yield* all(logo().opacity(1, 0.5), a().opacity(1, 0.7));
+  yield* waitFor(1.6);
+  yield* b().opacity(1, 0.7);
+}, false);
 
-// ---------- 2. request (9s) ----------
-const request = scene("request", 9, "The request", 1, function* (root) {
-  const chips = createRef<Rect>(), box = createRef<Rect>(), typed = createRef<Txt>();
+// ---------- 2. request → team context ----------
+const request = scene("request", function* (root) {
+  const cap = caption(root, "Say or type a loose request.");
+  const s = screen(root, "/shots/alice-home.png");
+  const mic = s.hl(321, 581, 146, 33, "Voice · ElevenLabs");
+  const box = s.hl(313, 659, 930, 165);
+  const brain = s.hl(1297, 463, 335, 330, "From MongoDB Atlas");
+  const chips = createRef<Layout>();
   root.add(
-    <Layout {...at(200, 220)} layout direction="column" gap={24}>
-      <Rect ref={chips} layout gap={20} opacity={0}>
-        {[`User: ${USER.name}`, `Project: ${PROJECT.name}`, "Voice or text"].map((t) => (
-          <Rect layout padding={[8, 16]} radius={10} stroke={C.border} lineWidth={1}>
-            <T text={t} fontSize={24} fill={C.muted} />
-          </Rect>
-        ))}
-      </Rect>
-      <Rect ref={box} opacity={0} layout width={1520} height={230} padding={[40, 48]} radius={18} fill={C.surface} stroke={C.accentDeep} lineWidth={2}>
-        <T ref={typed} text="" width={1424} textWrap fontSize={48} lineHeight={66} />
-      </Rect>
+    <Layout ref={chips} opacity={0} y={470} layout gap={18}>
+      <Pill text="Specs" /><Pill text="Team decisions" /><Pill text="Approved preferences" />
     </Layout>,
   );
-  const cap = caption(root, <>A plain model sees <Txt fill={C.bad}>one sentence</Txt>. Your team knows much more.</>);
-  yield* all(chips().opacity(1, 0.4), box().opacity(1, 0.4));
-  yield* typed().text(`“${REQUEST}”`, 4);
-  yield* waitFor(0.6);
-  yield* cap().opacity(1, 0.5);
+  yield* all(cap().opacity(1, 0.4), s.frame.opacity(1, 0.4));
+  yield* all(look(s, 780, 640, 1.35, 1.2), mic.opacity(1, 0.4));
+  yield* box.opacity(1, 0.4);
+  yield* waitFor(1.2);
+  yield* all(mic.opacity(0, 0.3), box.opacity(0, 0.3), look(s, 1180, 620, 1.3, 1.2),
+    cap().text("It pulls in what your team already knows.", 0.6));
+  yield* all(brain.opacity(1, 0.4), chips().opacity(1, 0.5));
 });
 
-// ---------- 3. context (13s) ----------
-function MemoryCard({ c, refFn }: { c: Card; refFn: (r: Rect) => void }) {
-  const color = c.kind === "Source" ? C.accent : c.kind === "Decision" ? C.ok : C.warn;
+// ---------- 3. cited brief ----------
+const brief = scene("brief", function* (root) {
+  const cap = caption(root, "Every instruction cites its source.");
+  const s = screen(root, "/shots/alice-brief.png");
+  const cites = [s.hl(527, 820, 33, 24), s.hl(1008, 857, 72, 24), s.hl(903, 893, 33, 24), s.hl(347, 957, 33, 24)];
+  const req = s.hl(321, 760, 914, 225, "Cited to sources & decisions");
+  yield* all(cap().opacity(1, 0.4), s.frame.opacity(1, 0.4));
+  yield* look(s, 780, 760, 1.25, 1.4);
+  yield* all(req.opacity(1, 0.4), sequence(0.25, ...cites.map((c) => c.opacity(1, 0.3))));
+  yield* waitFor(1.6);
+
+  // Assumptions + export, from the same brief
+  yield* all(s.frame.opacity(0, 0.35), cap().opacity(0, 0.35));
+  s.img.src("/shots/alice-lesson.png");
+  [req, ...cites].forEach((c) => c.opacity(0));
+
+  const assume = s.hl(321, 18, 914, 295);
+  const md = s.hl(1090, 343, 145, 48, "Export Markdown");
+  const pills = createRef<Layout>();
+  root.add(
+    <Layout ref={pills} opacity={0} y={470} layout gap={18}>
+      <Pill text="Copy or download .md → any coding tool" /><Pill text="Or preview a sandboxed website" />
+    </Layout>,
+  );
+  cap().text("Gaps become explicit assumptions.");
+  yield* look(s, 780, 220, 1.3, 0.01);
+  yield* all(s.frame.opacity(1, 0.35), cap().opacity(1, 0.35), assume.opacity(1, 0.4));
+  yield* waitFor(1.4);
+  yield* all(md.opacity(1, 0.4), pills().opacity(1, 0.4), look(s, 900, 260, 1.3, 1));
+});
+
+// ---------- 4. governed memory ----------
+function Row({ left, mid, right, tone = C.muted, strike = false }: { left: string; mid: string; right?: string; tone?: string; strike?: boolean }) {
   return (
-    <Rect ref={refFn} opacity={0} layout direction="column" gap={8} width={568} padding={[16, 20]} radius={14}
-      fill={C.surface} stroke={C.border} lineWidth={2}>
-      <Rect layout justifyContent="space-between" width={524}>
-        <T text={clip(c.title.toUpperCase(), 30)} fontSize={17} fontWeight={700} letterSpacing={0.8} fill={color} />
-        <T text={c.tag} fontFamily={MONO} fontSize={17} fill={C.muted} />
-      </Rect>
-      <T text={clip(c.text, 105)} width={524} textWrap fontSize={20} lineHeight={27} />
-      {c.hero && <T text={`corrected: replaces “${clip(HERO_OLD.text, 40)}” (r1)`} width={524} textWrap fontSize={17} fill={C.warn} />}
+    <Rect layout alignItems="center" gap={18} width={720} padding={[12, 18]} radius={12} fill={C.surface} stroke={C.border} lineWidth={1.5}>
+      <T text={left} fontFamily={MONO} fontSize={19} fontWeight={600} fill={tone} width={150} />
+      <T text={mid} fontSize={21} grow={1} fill={strike ? C.muted : C.text} />
+      {right && <T text={right} fontFamily={MONO} fontSize={19} fill={C.muted} />}
     </Rect>
   );
 }
 
-const context = scene("context", 13, "Retrieve team context · MongoDB Atlas", 2, function* (root) {
-  const cards: Rect[] = [], heads: Txt[] = [], excluded: Rect[] = [], reasons: Txt[] = [];
-  let hero: Rect | null = null;
-  const exHead = createRef<Txt>();
-  const cols = [
-    { title: "Sources", kind: "Source" },
-    { title: "Team decisions", kind: "Decision" },
-    { title: "Approved lessons", kind: "Lesson" },
-  ];
+const govern = scene("govern", function* (root) {
+  const cap = caption(root, "Memory you can govern.");
+  const s = screen(root, "/shots/alice-lesson.png");
+  const lesson = s.hl(321, 770, 914, 170, "Proposed: does nothing yet");
+  const scope = s.hl(336, 957, 883, 44, "You choose: me · project · team");
+  yield* all(cap().opacity(1, 0.4), s.frame.opacity(1, 0.4), look(s, 780, 860, 1.25, 0.01));
+  yield* lesson.opacity(1, 0.4);
+  yield* waitFor(1.1);
+  yield* all(lesson.opacity(0, 0.3), scope.opacity(1, 0.4));
+  yield* waitFor(1.2);
+
+  const left: Rect[] = [], right: Rect[] = [];
+  const board = createRef<Layout>();
+  const clip = (t: string, n: number) => (t.length > n ? t.slice(0, n - 1).trimEnd() + "…" : t);
   root.add(
-    <Layout {...at(80, 130)} layout gap={28} alignItems="start">
-      {cols.map((col) => (
-        <Layout layout direction="column" gap={14}>
-          <T ref={(r: Txt) => heads.push(r)} opacity={0} text={col.title} fontSize={22} fontWeight={700} fill={C.muted} />
-          {INCLUDED.filter((c) => c.kind === col.kind).map((c) => (
-            <MemoryCard c={c} refFn={(r) => { cards.push(r); if (c.hero) hero = r; }} />
-          ))}
-        </Layout>
-      ))}
-    </Layout>,
-  );
-  root.add(
-    <Layout {...at(80, 720)} layout direction="column" gap={12}>
-      <T ref={exHead} opacity={0} text="Filtered out by scope and status" fontSize={22} fontWeight={700} fill={C.muted} />
-      <Layout layout wrap="wrap" gap={12} width={1760}>
-        {EXCLUDED.map((x) => (
-          <Rect ref={(r: Rect) => excluded.push(r)} opacity={0} layout direction="column" gap={4} width={578} padding={[10, 14]} radius={10}
-            fill={C.raised} stroke={C.border} lineWidth={1}>
-            <T text={clip(x.text, 52)} fontSize={18} />
-            <T ref={(r: Txt) => reasons.push(r)} opacity={0} text={`✕ ${x.reason}`} fontSize={18} fontWeight={600} fill={C.bad} />
+    <Layout ref={board} opacity={0} y={60} layout gap={60} alignItems="start">
+      <Layout layout direction="column" gap={14}>
+        <T text="Only approved, current memory reaches a brief" fontSize={24} fontWeight={700} fill={C.accent} />
+        {[
+          <Row left="approved" mid="Bulk exports include a manifest" right="project" tone={C.accent} />,
+          <Row left="superseded" mid={clip(HERO_OLD.text, 42)} right="r1" tone={C.warn} strike />,
+          <Row left="current" mid={clip(HERO_RULE.text, 42)} right="r2" tone={C.accent} />,
+          <Row left="left out" mid="Proposed, expired or retired lessons" tone={C.bad} />,
+          <Row left="left out" mid="Another teammate's private notes" tone={C.bad} />,
+        ].map((r) => <Rect ref={(n: Rect) => left.push(n)} opacity={0}>{r}</Rect>)}
+      </Layout>
+      <Layout layout direction="column" gap={14}>
+        <T text="memory_events · append-only audit log" fontFamily={MONO} fontSize={22} fontWeight={600} fill={C.muted} />
+        {[
+          ["approved", "lesson · by alice · scope project"],
+          ["superseded", "decision r1 → r2 · by alice"],
+          ["expired", "stale lesson removed from use"],
+          ["stale brief", "export blocked: its memory changed"],
+        ].map(([a, b]) => (
+          <Rect ref={(n: Rect) => right.push(n)} opacity={0} layout gap={16} width={720} padding={[14, 18]} radius={12} fill={C.soft}>
+            <T text={a} fontFamily={MONO} fontSize={20} fontWeight={700} fill={C.accent} width={170} />
+            <T text={b} fontSize={21} />
           </Rect>
         ))}
       </Layout>
     </Layout>,
   );
-  const cap = caption(root, <>Only <Txt fill={C.ok}>approved</Txt>, <Txt fill={C.ok}>current</Txt>, in-scope memory reaches the brief.</>);
-
-  yield* all(reveal(0.1, heads), reveal(0.25, cards));
-  if (hero) yield* all(hero.stroke(C.warn, 0.5), hero.shadowColor(C.warn + "88", 0.5), hero.shadowBlur(36, 0.5));
-  yield* all(exHead().opacity(1, 0.3), reveal(0.12, excluded));
-  yield* sequence(0.3, ...excluded.map((e, i) => all(reasons[i].opacity(1, 0.3), e.opacity(0.55, 0.3))));
-  yield* waitFor(0.4);
-  yield* cap().opacity(1, 0.5);
+  yield* all(s.frame.opacity(0, 0.35), cap().text("Versioned, scoped, and logged.", 0.5));
+  yield* board().opacity(1, 0.3);
+  yield* all(sequence(0.45, ...left.map((r) => r.opacity(1, 0.35))), sequence(0.55, ...right.map((r) => r.opacity(1, 0.35))));
 });
 
-// ---------- 4. brief (13s) ----------
-const brief = scene("brief", 13, "Build a cited brief", 3, function* (root) {
-  const rows: Layout[] = [], stats: Rect[] = [];
-  const panel = createRef<Rect>();
-  let last = "";
+// ---------- 5. team learning ----------
+const team = scene("team", function* (root) {
+  const cap = caption(root, "Alice teaches once. Bob benefits.");
+  const s = screen(root, "/shots/bob-brief.png");
+  const row = s.hl(321, 214, 914, 58, "Alice's approved lesson, in Bob's fresh session");
+  const tag = createRef<Layout>();
   root.add(
-    <Rect ref={panel} opacity={0} {...at(80, 130)} layout direction="column" width={1180} height={800} padding={[28, 40]} radius={18}
-      fill={C.surface} stroke={C.border} lineWidth={1}>
-      {BRIEF.map((l, i) => {
-        const head = l.section !== last;
-        last = l.section;
-        return (
-          <Layout ref={(r: Layout) => rows.push(r)} opacity={0} layout direction="column">
-            {head && <T text={l.section.toUpperCase()} fontSize={17} fontWeight={700} letterSpacing={1} fill={C.muted} marginTop={i ? 14 : 0} marginBottom={4} />}
-            <Rect layout alignItems="center" gap={14} width={1100} padding={[5, 10]} radius={8}
-              fill={l.hero ? C.warnTint : l.question ? C.warnSoft : null}>
-              <T text={(l.question ? "? " : "") + l.text} fontSize={24} grow={1} />
-              <Cite text={l.cite} hero={l.hero} />
-            </Rect>
-          </Layout>
-        );
-      })}
-    </Rect>,
-  );
-  root.add(
-    <Layout {...at(1310, 160)} layout direction="column" gap={28}>
-      {[
-        ["1 → 10", "sentence → cited instructions"],
-        ["10 / 10", "instructions cite a revision"],
-        ["1", "open question surfaced, not guessed"],
-      ].map(([big, small]) => (
-        <Rect ref={(r: Rect) => stats.push(r)} opacity={0} layout direction="column" width={530} padding={[24, 28]} radius={16}
-          fill={C.surface} stroke={C.border} lineWidth={1}>
-          <T text={big} fontSize={60} fontWeight={800} fill={C.accent} />
-          <T text={small} fontSize={24} fill={C.muted} />
-        </Rect>
-      ))}
+    <Layout ref={tag} opacity={0} y={470} layout gap={18}>
+      <Pill text="Different teammate" /><Pill text="Different feature: invoice export" /><Pill text="Never asked for a manifest" />
     </Layout>,
   );
-  const cap = caption(root, "Every line points back to the source or memory it came from.");
-  yield* panel().opacity(1, 0.4);
-  yield* all(reveal(0.6, rows), sequence(2.2, ...stats.map((s) => s.opacity(1, 0.5))));
-  yield* cap().opacity(1, 0.5);
+  yield* all(cap().opacity(1, 0.4), s.frame.opacity(1, 0.4));
+  yield* look(s, 780, 330, 1.35, 1.2);
+  yield* all(row.opacity(1, 0.4), tag().opacity(1, 0.5));
 });
 
-// ---------- 5. result (12s) ----------
-function Field({ label, bad, hint }: { label: string; bad?: boolean; hint?: string }) {
-  return (
-    <Layout layout direction="column" gap={4} width={380}>
-      <Txt text={label} fontFamily={FONT} fontSize={15} fontWeight={600} fill={bad ? "#c92a2a" : "#1f2937"} />
-      <Rect width={380} height={34} radius={8} fill={bad ? "#fff5f5" : "#ffffff"} stroke={bad ? "#c92a2a" : "#d1d5db"} lineWidth={1.5} />
-      {hint && <Txt text={hint} fontFamily={FONT} fontSize={13} fill="#2b8a3e" />}
-    </Layout>
-  );
-}
-
-function PageMock({ good }: { good: boolean }) {
-  return (
-    <Rect layout direction="column" alignItems="center" width={850} height={470} padding={24} radius={12} fill={good ? "#ffffff" : "#f3f0ff"}>
-      <Layout layout direction="column" gap={12} width={380}>
-        <Txt text={good ? "Create your Lumen account" : "Join us today!!"} fontFamily={FONT} fontSize={24} fontWeight={700} fill="#1f2937" />
-        <Field label="Work email" />
-        {good ? <Field label="Full name" /> : <Field label="Phone number" bad />}
-        <Field label="Password" hint={good ? "✓ 12+ characters   ○ one number" : undefined} />
-        {good && <Field label="Workspace name" />}
-        {good && <Txt text="☑ I agree to the Terms and Privacy Policy" fontFamily={FONT} fontSize={13} fill="#1f2937" />}
-        <Rect layout justifyContent="center" alignItems="center" width={good ? 380 : 200} height={42} radius={good ? 8 : 21} fill={good ? "#3B5BDB" : "#e64980"}>
-          <Txt text={good ? "Create account" : "Sign Up Now!"} fontFamily={FONT} fontSize={17} fontWeight={700} fill="#ffffff" />
-        </Rect>
-      </Layout>
-    </Rect>
-  );
-}
-
-const result = scene("result", 12, "Generate & check the React page", 4, function* (root) {
-  const panels: Layout[] = [], plain: Rect[] = [], pf: Rect[] = [];
-  const panel = (good: boolean) => (
-    <Layout ref={(r: Layout) => panels.push(r)} opacity={0} layout direction="column" gap={14}>
-      <T text={good ? "With the PromptForge brief" : "Same request, plain prompt"} fontSize={26} fontWeight={700} fill={good ? C.ok : C.bad} />
-      <PageMock good={good} />
-      <Layout layout direction="column" gap={8} marginTop={4}>
-        {(good ? CHECKS_PF : CHECKS_PLAIN).map((c: any) => (
-          <Rect ref={(r: Rect) => (good ? pf : plain).push(r)} opacity={0} layout alignItems="center" gap={12} width={850} padding={[2, 8]} radius={8}
-            fill={c.hero ? C.warnTint : null}>
-            <T text={c.ok ? "✓" : "✕"} fontSize={22} fontWeight={800} fill={c.ok ? C.ok : C.bad} />
-            <T text={c.text} fontSize={22} grow={1} />
-            {c.cite && <Cite text={c.cite} hero={c.hero} />}
-          </Rect>
-        ))}
-      </Layout>
-    </Layout>
-  );
+// ---------- 6. accessibility ----------
+const access = scene("access", function* (root) {
+  const cap = caption(root, "Accessible by default.");
+  const s = screen(root, "/shots/bob-brief.png");
+  const line = s.hl(321, 896, 914, 56, "Accessibility standard, in every brief");
+  const tags = createRef<Layout>();
   root.add(
-    <Layout {...at(80, 120)} layout gap={60}>
-      {panel(false)}
-      {panel(true)}
+    <Layout ref={tags} opacity={0} y={470} layout gap={18}>
+      <Pill text="🎙 Speak instead of typing" /><Pill text="Color contrast" /><Pill text="Keyboard navigation" /><Pill text="Alt text" />
     </Layout>,
   );
-  root.add(<T x={880} y={510} offsetX={1} text="Prototype render · one illustrative before/after, not a benchmark" fontSize={16} fill={C.muted} />);
-  yield* sequence(0.8, ...panels.map((p) => p.opacity(1, 0.5)));
-  yield* waitFor(0.5);
-  yield* reveal(0.4, plain);
-  yield* reveal(0.45, pf);
+  yield* all(cap().opacity(1, 0.4), s.frame.opacity(1, 0.4), look(s, 780, 330, 1.35, 0.01));
+  yield* look(s, 780, 880, 1.35, 1.2);
+  yield* all(line.opacity(1, 0.4), tags().opacity(1, 0.5));
 });
 
-// ---------- 6. close (8s) ----------
-const close = scene("close", 8, "Governed, auditable memory", 5, function* (root) {
-  const rows: Rect[] = [];
-  const note = createRef<Txt>(), logo = createRef<Layout>();
-  const events = [
-    { a: "created", t: HERO_OLD.text, who: HERO_OLD.owner_id, r: "r1", hero: false },
-    { a: "superseded", t: HERO_RULE.text, who: HERO_RULE.owner_id, r: "r2", hero: true },
-  ];
+// ---------- 7. close ----------
+const close = scene("close", function* (root) {
+  const logo = createRef<Layout>(), line = createRef<Txt>(), stack = createRef<Layout>();
   root.add(
-    <Layout {...at(200, 160)} layout direction="column" gap={8}>
-      <T text="memory_events (append-only)" fontFamily={MONO} fontSize={22} fill={C.muted} marginBottom={4} />
-      {events.map((e) => (
-        <Rect ref={(r: Rect) => rows.push(r)} opacity={0} layout alignItems="center" gap={20} width={1520} padding={[14, 20]} radius={10}
-          fill={e.hero ? C.warnTint : C.surface} stroke={e.hero ? C.warn : C.border} lineWidth={1}>
-          <T text={e.a} fontFamily={MONO} fontSize={22} width={180} fill={e.hero ? C.warn : C.muted} />
-          <T text={clip(e.t, 84)} fontSize={22} grow={1} />
-          <T text={e.who} fontSize={22} width={90} fill={C.muted} />
-          <T text={e.r} fontFamily={MONO} fontSize={22} width={40} />
-        </Rect>
-      ))}
-      <T ref={note} opacity={0} marginTop={14} fontSize={30} fill={C.muted}
-        text="One correction, made once, by its owner, shapes every teammate's next prompt." />
-    </Layout>,
-  );
-  root.add(
-    <Layout ref={logo} opacity={0} y={300} layout direction="column" alignItems="center" gap={10}>
-      <T fontSize={84} fontWeight={800}>Prompt<Txt fill={C.accent}>Forge</Txt></T>
-      <T text="Say what you want to build. We bring the context your team already has." fontSize={30} fill={C.muted} />
-      <Layout layout gap={14} marginTop={16}>
-        {["MongoDB Atlas Vector Search", "Voyage AI", "ElevenLabs Agents", "LangSmith"].map((s) => (
-          <Rect layout padding={[8, 16]} radius={999} stroke={C.border} lineWidth={1}>
-            <T text={s} fontSize={20} />
-          </Rect>
+    <Layout layout direction="column" alignItems="center" gap={30}>
+      <Layout ref={logo} opacity={0}><Logo size={64} /></Layout>
+      <T ref={line} opacity={0} fontFamily={SERIF} fontSize={52} letterSpacing={-1.5} fill={C.muted}
+        text="Teach it once. Every teammate's next prompt gets better." />
+      <Layout ref={stack} opacity={0} layout gap={16} marginTop={20}>
+        {["MongoDB Atlas", "Voyage AI", "ElevenLabs", "OpenAI", "LangSmith"].map((t) => (
+          <Pill text={t} size={26} fill={C.surface} color={C.text} />
         ))}
       </Layout>
     </Layout>,
   );
-  yield* reveal(0.6, rows);
-  yield* note().opacity(1, 0.5);
-  yield* waitFor(1);
-  yield* logo().opacity(1, 0.6);
-});
+  yield* all(logo().opacity(1, 0.5), line().opacity(1, 0.6));
+  yield* stack().opacity(1, 0.5);
+}, false);
 
 export default makeProject({
-  scenes: [hook, request, context, brief, result, close],
+  scenes: [hook, request, brief, govern, team, access, close],
   settings: { shared: { size: { x: 1920, y: 1080 } } },
 });
