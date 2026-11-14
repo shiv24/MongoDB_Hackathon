@@ -5,5 +5,7 @@ anthropic
 voyageai
 python-dotenv
 itsdangerous
+python-multipart
+httpx
 beautifulsoup4
 pytest

@@ -13,7 +13,9 @@ Full design: [docs/DESIGN.md](docs/DESIGN.md)
 ## How it works
 
 ```
-brief ──► 1. Retrieve   $vectorSearch on lessons (pre-filtered by team_id, status=active), re-rank 0.6·sim + 0.4·score
+brief (typed, or spoken → ElevenLabs Speech-to-Text)
+  │
+  └──►    1. Retrieve   $vectorSearch on lessons (pre-filtered by team_id, status=active), re-rank 0.6·sim + 0.4·score
           2. Condense   Claude merges top lessons into one prompt (<150 words)
           3. Generate   Variant A (exploit) + Variant B (explore), in parallel
           4. Score      checklist auto-score 0–6
@@ -40,7 +42,7 @@ skills/             Claude Code skills for this repo (symlinked into .claude/ski
 ## Quickstart
 
 ```bash
-cp .env.example .env            # fill in MONGODB_URI, ANTHROPIC_API_KEY, VOYAGE_API_KEY
+cp .env.example .env            # fill in MONGODB_URI, ANTHROPIC_API_KEY, VOYAGE_API_KEY, ELEVENLABS_API_KEY
 python -m venv .venv && source .venv/bin/activate
 pip install -r backend/requirements.txt
 python scripts/setup_atlas.py   # collections, validators, Vector Search + TTL indexes
@@ -53,9 +55,9 @@ uvicorn app.main:app --reload --app-dir backend
 
 | Role | Owns |
 |---|---|
-| P1 Generation | Claude client, condense, A/B generation, reason-tag → lesson |
+| P1 Generation | Claude client, condense, A/B generation, reason-tag → lesson, `/transcribe` |
 | P2 Memory | Atlas setup, retrieval, scoring, demote/retire/expire, memory_events |
-| P3 Frontend | Build screen, iframes, vote UI, memory sidebar, admin page |
+| P3 Frontend | Build screen, mic button, iframes, vote UI, memory sidebar, admin page |
 | P4 Data & demo | Seeds, checklist scorer, isolation test, demo warm-up and script |
 
 ## Built during the hackathon
@@ -66,10 +68,11 @@ Everything in this repo was written on Nov 14, 2026, during the event. Component
 - [ ] Atlas collections, Vector Search index, TTL index, memory_events validator
 - [ ] Lesson scoring, demotion, retirement and expiry
 - [ ] Build-and-vote frontend and memory sidebar
+- [ ] Voice brief (mic → `/transcribe` → brief box)
 - [ ] Lesson admin page
 - [ ] Seed briefs and starter lessons (written by us)
 
-**Third-party dependencies:** FastAPI, MongoDB Atlas, Anthropic Claude API, Voyage AI embeddings.
+**Third-party dependencies:** FastAPI, MongoDB Atlas, Anthropic Claude API, Voyage AI embeddings, ElevenLabs Speech-to-Text.
 
 ## License
 

@@ -7,7 +7,7 @@ Nov 14, 2026 · @Ethan
 PromptForge is an agent that builds websites from a one-line brief and gets measurably better each run, because it remembers which prompt instructions won past votes. It targets **Track 2: Memory You Can Govern**, with vote auditing borrowed from Track 1.
 
 - **Problem:** teams rewrite the same long prompts by hand. Nobody knows which instructions actually improve output, and prompt knowledge leaks or goes stale.
-- **Solution:** each run retrieves the team's best prompt "lessons" from Atlas Vector Search and condenses them into one short prompt. It generates two site variants and lets users vote. Votes update lesson scores: losers are demoted and winners shape the next run.
+- **Solution:** the user types or speaks a brief (ElevenLabs Speech-to-Text). Each run retrieves the team's best prompt "lessons" from Atlas Vector Search and condenses them into one short prompt. It generates two site variants and lets users vote. Votes update lesson scores: losers are demoted and winners shape the next run.
 - **Proof:** the same brief, run four times, produces a visibly better site with fewer prompt tokens. Every run records which memories it used.
 - **Constraints:** ~6 hours of build time (10:45 AM–5:00 PM), up to 4 people, MongoDB Atlas Sandbox, public repo, all work new.
 
@@ -18,7 +18,7 @@ PromptForge is an agent that builds websites from a one-line brief and gets meas
 | Use the MongoDB Atlas Sandbox (finalists) | All collections, Vector Search and TTL indexes live in the hackathon sandbox project from the invite email; set up in hour 1 |
 | Public repo | Public from the first commit; MIT license |
 | New work only | Repo created at 10:45 AM; frequent commits; README "Built during the hackathon" lists every component |
-| Demo shows only our work | Demo walks through our pipeline, memory scoring and voting UI; FastAPI, Claude API and Voyage named as dependencies |
+| Demo shows only our work | Demo walks through our pipeline, memory scoring and voting UI; FastAPI, Claude API, Voyage and ElevenLabs named as dependencies |
 | Rights to code, data, assets | No stock images; placeholders are CSS shapes or CC0 assets; seed briefs written by us |
 | Max 4 members | Roles sized for 4; works with 2–3 by merging roles |
 | Not basic RAG | Retrieval is one step. The agent also generates, scores, demotes and expires, and memory measurably changes the next run |
@@ -28,7 +28,9 @@ PromptForge is an agent that builds websites from a one-line brief and gets meas
 
 ## Architecture
 
-Three parts: a plain web frontend, a FastAPI agent running a four-step loop, and MongoDB Atlas as the memory and audit store. Claude (condense, generate) and Voyage AI (embeddings) are the only external APIs.
+Three parts: a plain web frontend, a FastAPI agent running a four-step loop, and MongoDB Atlas as the memory and audit store. Claude (condense, generate), Voyage AI (embeddings) and ElevenLabs (speech-to-text for the brief) are the only external APIs.
+
+**Voice brief.** The Build screen has a mic button. The browser records audio with `MediaRecorder` and POSTs it to `/transcribe`. The backend forwards it to ElevenLabs Speech-to-Text and returns the text, which fills the brief box so the user can check or edit it before pressing Build. The ElevenLabs API key stays on the server and audio is not stored. Voice only fills the brief; the loop is unchanged.
 
 Step 4 rewrites lesson scores and appends to `memory_events`. Step 1 reads those scores on the next run, which closes the learning loop.
 
@@ -107,6 +109,7 @@ Every step 6–8 change writes a `memory_events` row with its cause.
 
 | Method | Path | Does |
 |---|---|---|
+| POST | `/transcribe` | Multipart audio → ElevenLabs Speech-to-Text → `{text}` for the brief box |
 | POST | `/login` | Pick a demo user; sets session with `user_id, team_id` |
 | POST | `/runs` | Body `{brief, memory: true}`; retrieve, condense, generate A and B |
 | GET | `/runs/{id}` | Run detail incl. `used_lessons` and token savings |
@@ -116,7 +119,7 @@ Every step 6–8 change writes a `memory_events` row with its cause.
 | DELETE | `/lessons/{id}` | Admin: forget |
 
 **Screens**
-1. **Build (main):** brief input, memory toggle, two iframes side by side, checklist score under each, vote buttons + reason tags.
+1. **Build (main):** brief input with mic button (voice brief), memory toggle, two iframes side by side, checklist score under each, vote buttons + reason tags.
 2. **Memory sidebar:** lessons used with score bars, live "+0.08" / "−0.05" deltas after each vote.
 3. **Lesson admin:** edit, mark wrong, forget; shows each lesson's `memory_events` history.
 
@@ -131,16 +134,16 @@ Core loop works end to end by **2:30 PM**. Submissions close at **5:00 PM**.
 | 10:45–11:30 | Repo, FastAPI skeleton, Claude client | Atlas sandbox, collections, indexes | Build screen layout, iframes | Seed users, teams, 15 starter lessons |
 | 11:30–1:00 | Condense + generate A/B | Retrieval with team filter, re-rank | `/runs` wired to UI | Checklist auto-scorer |
 | 1:00–2:30 | Reason tags → new lesson | Vote scoring, demote, retire, memory_events | Vote buttons, memory sidebar | Isolation unit test; memory-off toggle |
-| 2:30–4:00 | Token savings, error handling | TTL + model-version expiry, admin edit/forget | Lesson admin page, deltas animation | Pre-run demo history so scores are warm |
+| 2:30–4:00 | Token savings, error handling, `/transcribe` (ElevenLabs) | TTL + model-version expiry, admin edit/forget | Lesson admin page, deltas animation, mic button | Pre-run demo history so scores are warm |
 | 4:00–5:00 | Freeze code | README "Built during the hackathon" | Polish | Rehearse demo twice, submit by 4:45 |
 
-**Cut list if behind:** lesson admin page → curl only; Variant B explore logic → random lesson swap; reason-tag lessons → drop.
+**Cut list if behind:** lesson admin page → curl only; Variant B explore logic → random lesson swap; reason-tag lessons → drop; voice brief → typed brief only.
 
 ## Demo script (3 min)
 
 1. **Hook (20 s):** "Prompts are team knowledge nobody governs. PromptForge remembers what works, forgets what doesn't, and proves it."
 2. **Cold run (40 s):** memory off, "landing page for a coffee shop". Two plain sites, checklist ~2/6.
-3. **Memory on (40 s):** same brief. Sidebar lists lessons used; ~5/6 with ~40% fewer prompt tokens. Vote live; scores move.
+3. **Memory on (40 s):** speak the same brief into the mic; it appears in the brief box. Sidebar lists lessons used; ~5/6 with ~40% fewer prompt tokens. Vote live; scores move.
 4. **Transfer (30 s):** "bakery site". Good first try using coffee lessons.
 5. **Governance (40 s):** Team B, same brief, different style, zero shared lessons. Team A: forget top lesson, rerun, CTA disappears. Show `memory_events` trail.
 6. **Close (10 s):** what we built today, repo link.
@@ -154,3 +157,4 @@ Core loop works end to end by **2:30 PM**. Submissions close at **5:00 PM**.
 | Wi-Fi or API outage | Pre-recorded 60 s video; cached run JSON |
 | Judges call it basic RAG | Open with memory-off vs memory-on and the forget counterfactual |
 | Generated HTML breaks the page | Sandboxed iframes, no scripts |
+| Mic, room noise or ElevenLabs fails on stage | Transcript lands in an editable box; type the brief instead |

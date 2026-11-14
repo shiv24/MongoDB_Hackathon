@@ -18,5 +18,6 @@ Full lines are in docs/DESIGN.md under "Demo script".
 ## Checklist
 - [ ] Lead with checklist numbers and token savings, not taste
 - [ ] Memory sidebar deltas are visible at projector size
+- [ ] Mic tested on the venue laptop and Wi-Fi; mic permission granted in the browser beforehand
 - [ ] 60 s backup video recorded
 - [ ] Submitted by 4:45 PM

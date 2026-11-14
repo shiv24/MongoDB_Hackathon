@@ -11,6 +11,10 @@ CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "")
 VOYAGE_API_KEY = os.environ.get("VOYAGE_API_KEY", "")
 EMBED_MODEL = os.environ.get("EMBED_MODEL", "voyage-3")
 EMBED_DIMS = int(os.environ.get("EMBED_DIMS", "1024"))
+ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
+ELEVENLABS_STT_MODEL = os.environ.get("ELEVENLABS_STT_MODEL", "scribe_v1")
+# Step 8: lessons whose model_version differs from this are re-queued as demoted
+CURRENT_MODEL_VERSION = os.environ.get("CURRENT_MODEL_VERSION", CLAUDE_MODEL)
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "dev")
 
 # Retrieval
