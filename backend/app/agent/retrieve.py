@@ -1,1 +1,2 @@
-"""Step 1: embed brief, vector search via repo.get_lessons, re-rank 0.6*sim + 0.4*score."""
+"""Step 2: authorized retrieval. Embed the request, then search sources, current decisions and
+approved lessons through repo/ (scope pre-filters applied before semantic search)."""

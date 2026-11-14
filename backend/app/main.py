@@ -1,19 +1,11 @@
-from pathlib import Path
-
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from starlette.middleware.sessions import SessionMiddleware
 
 from app import config
-from app.routes import auth, lessons, runs, voice
+from app.routes import auth, lessons, projects, runs, voice
 
 app = FastAPI(title="PromptForge")
 app.add_middleware(SessionMiddleware, secret_key=config.SESSION_SECRET)
 
-app.include_router(auth.router)
-app.include_router(runs.router)
-app.include_router(lessons.router)
-app.include_router(voice.router)
-
-FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
-app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")
+for module in (auth, projects, runs, lessons, voice):
+    app.include_router(module.router)

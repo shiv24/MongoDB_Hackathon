@@ -1,6 +1,6 @@
 import pytest
 
 
-@pytest.mark.skip(reason="TODO(P4): seed Team A + Team B, assert get_lessons(team_b) has zero Team A ids")
-def test_team_b_cannot_see_team_a_lessons():
+@pytest.mark.skip(reason="TODO: needs Atlas fixtures - seed team_a + team_b, assert team_b search returns zero team_a ids")
+def test_team_b_cannot_retrieve_team_a_memory():
     ...

@@ -175,7 +175,7 @@ flowchart TD
     P --> H
 ```
 
-The existing scaffold uses **FastAPI**, **plain HTML/JavaScript**, **MongoDB Atlas**, and placeholders for **Anthropic Claude**, **Voyage AI embeddings**, and **ElevenLabs speech-to-text**. Provider adapters and the execution flow still need implementation. Secrets stay on the server. The existing website prototype specifies generated HTML in a sandboxed iframe without scripts.
+The existing scaffold uses **FastAPI**, **MongoDB Atlas**, and placeholders for **Anthropic Claude**, **Voyage AI embeddings**, and **ElevenLabs speech-to-text**. Provider adapters and the execution flow still need implementation. Secrets stay on the server. Any generated HTML must render in a sandboxed iframe without scripts.
 
 ### Planned records
 
@@ -188,7 +188,7 @@ The existing scaffold uses **FastAPI**, **plain HTML/JavaScript**, **MongoDB Atl
 | Feedback | Preserve the user's observation and any lesson it proposed |
 | Memory events | Explain approvals, corrections, scope changes, retirement, and forgetting without retaining content that must be erased |
 
-These are target responsibilities. The current scaffold's collection names and schema still reflect the earlier website-voting design.
+The scaffold's collections are `users`, `projects`, `sources`, `decisions`, `lessons`, `runs`, `feedback` and `memory_events`. See [docs/DESIGN.md](docs/DESIGN.md#data-model).
 
 ## Implementation status
 
@@ -196,28 +196,27 @@ These are target responsibilities. The current scaffold's collection names and s
 
 | Area | Current state |
 | --- | --- |
-| Backend | FastAPI app, configuration, session middleware, and route declarations |
-| Generation and retrieval | Placeholder modules; the core pipeline is not implemented |
-| Memory | A Bayesian score helper from the earlier voting concept; repository and event-writer stubs |
+| Backend | FastAPI app, configuration, session middleware, and route stubs for projects, runs, lessons and voice |
+| Pipeline | Stubs for intent, retrieval, cited brief, execution, validation and learning (`backend/app/agent/`) |
+| Memory and access | Working session-derived scope filters (`repo/scope.py`); stubs for lessons, sources, decisions, runs and the event writer |
 | Voice | A transcription-client stub and route; no working transcription flow |
-| Frontend | HTML/JavaScript shells for the earlier build-and-vote experience |
-| Atlas setup | Setup and seed script placeholders; empty seed fixtures |
-| Tests | A score-helper unit test and a skipped isolation-test placeholder |
+| Frontend | None yet. The earlier build-and-vote shells were removed; the UI for the experience above is still to be built |
+| Atlas setup | Setup and seed script placeholders; empty team_a and team_b fixture files |
+| Tests | Scope-filter unit tests; a skipped Atlas isolation test |
 
-[docs/DESIGN.md](docs/DESIGN.md) documents the **earlier website-voting prototype**. Its automatic vote-based scoring, short-prompt target, demo script, and delivery claims need reconciliation with this README before further implementation. The current direction requires approved learning and shared project context; neither is complete in the code.
+[docs/DESIGN.md](docs/DESIGN.md) maps this README to the data model, API and modules. The earlier website-voting design is archived in [docs/archive/](docs/archive/website-voting-design.md). Approved learning and shared project context are designed but not yet implemented.
 
 ### Repository layout
 
 ```text
 backend/
   app/main.py          FastAPI application
-  app/routes/          Auth, runs, lessons, and voice route stubs
-  app/agent/           Retrieval, prompt assembly, generation, and memory modules
-  app/repo/            Scoped data-access and memory-event writer stubs
-  tests/               Initial unit test and isolation placeholder
-frontend/              Existing website-voting UI shells
+  app/routes/          Auth, projects, runs, lessons, and voice route stubs
+  app/agent/           Intent, retrieval, brief, execution, validation, and learning modules
+  app/repo/            Scope filters and scoped data access (the only path to Atlas)
+  tests/               Scope-filter tests and isolation placeholder
 scripts/               Atlas setup, seed scripts, and fixture placeholders
-docs/                  Earlier prototype design
+docs/                  Technical design; archive/ holds the earlier prototype design
 skills/                Repository-specific development instructions
 ```
 
@@ -240,9 +239,9 @@ The existing test command is:
 pytest backend/tests
 ```
 
-This currently covers the score helper; it does not verify the product workflow or team isolation. The isolation test is skipped.
+This currently covers the scope filters only; it does not verify the product workflow. The Atlas isolation test is skipped until fixtures exist.
 
-**There is no working end-to-end quickstart yet.** `scripts/setup_atlas.py` and `scripts/seed.py` are placeholders. The app's static-file mount currently resolves to `backend/frontend`, while the assets live at the repository's `frontend/` directory; that path must be corrected before the intended `uvicorn app.main:app --reload --app-dir backend` command can serve the app.
+**There is no working end-to-end quickstart yet.** `scripts/setup_atlas.py` and `scripts/seed.py` are placeholders. `uvicorn app.main:app --reload --app-dir backend` starts the API only; there is no frontend to serve yet.
 
 ## Team ownership
 

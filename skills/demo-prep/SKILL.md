@@ -1,23 +1,30 @@
 ---
 name: demo-prep
-description: Warm up PromptForge for the 3-minute demo by seeding votes, caching fallback runs, and walking the script. Use from ~2:30 PM onward, or when asked to prepare, rehearse, or de-risk the demo.
+description: Prepare PromptForge's demo and submission - fixtures, the memory-change proof, fallback runs, the 1-minute video and the submission checklist. Use when asked to prepare, rehearse, record, or de-risk the demo or submission.
 ---
 
 # Demo prep
 
-## Warm-up (do before rehearsal)
-1. `python scripts/seed.py --reset`: two teams, demo users (one admin, one expert), starter lessons.
-2. Run ~20 seeded votes on Team A with the coffee-shop brief so scores are spread out, not all 0.5.
-3. Cache the JSON for these runs in `cache/`: cold coffee (memory off), warm coffee (memory on), bakery, Team B coffee. They are the fallback if Wi-Fi or the API fails.
-4. Check that the forget counterfactual works: find the top CTA lesson, forget it, rerun, and confirm the CTA disappears.
+Follow README "How we will prove it works". The demo task is still open; website generation is the leading candidate.
 
-## Script (3:00)
-Hook 0:20 → Cold run 0:40 → Memory on 0:40 → Transfer (bakery) 0:30 → Governance (Team B + forget) 0:40 → Close 0:10.
-Full lines are in docs/DESIGN.md under "Demo script".
+## Proof run
+1. Seed: `python scripts/seed.py --reset` (one project with sources and decisions for team_a; team_b fixtures for isolation).
+2. Run a fixed request. Show the sources and memories cited in the brief.
+3. In a separate session, approve a specific lesson or supersede a decision.
+4. Repeat the same request in a fresh session with the same model and starting revision.
+5. Show the changed brief, the cited memory revision, and a **concrete, checkable** difference in the result.
+6. Show that expired, superseded, unapproved and team_b memories are excluded.
 
-## Checklist
-- [ ] Lead with checklist numbers and token savings, not taste
-- [ ] Memory sidebar deltas are visible at projector size
-- [ ] Mic tested on the venue laptop and Wi-Fi; mic permission granted in the browser beforehand
-- [ ] 60 s backup video recorded
-- [ ] Submitted by 4:45 PM
+Choose a lesson with an objective check (e.g. "signup page has a mobile layout", "uses the identity service"), not "looks better". A single before/after pair is demo evidence, not a benchmark; say so.
+
+## Fallbacks
+- Cache the run JSON in `cache/` (committed) and label it as a fixture/prerecorded fallback when used.
+- Typed request if voice fails.
+
+## Submission checklist (closes 5:00 PM Toronto)
+- [ ] Using the Atlas Hackathon Sandbox
+- [ ] Repo public
+- [ ] 1-minute demo video plays; shows only work built today
+- [ ] README status replaced with verified capabilities; original work vs third-party dependencies listed
+- [ ] Every team member listed
+- [ ] Concise project description submitted

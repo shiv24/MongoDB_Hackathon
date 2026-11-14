@@ -1,4 +1,4 @@
-"""Settings and tunable constants (see skills/memory-loop)."""
+"""Settings and constants. Keep tunables here, not inline."""
 import os
 from dotenv import load_dotenv
 
@@ -13,20 +13,18 @@ EMBED_MODEL = os.environ.get("EMBED_MODEL", "voyage-3")
 EMBED_DIMS = int(os.environ.get("EMBED_DIMS", "1024"))
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 ELEVENLABS_STT_MODEL = os.environ.get("ELEVENLABS_STT_MODEL", "scribe_v1")
-# Step 8: lessons whose model_version differs from this are re-queued as demoted
-CURRENT_MODEL_VERSION = os.environ.get("CURRENT_MODEL_VERSION", CLAUDE_MODEL)
 SESSION_SECRET = os.environ.get("SESSION_SECRET", "dev")
 
+# Scopes and statuses (see docs/DESIGN.md "Data model")
+LESSON_SCOPES = ("personal", "project", "team")
+LESSON_STATUSES = ("proposed", "approved", "rejected", "superseded", "retired", "expired")
+DECISION_STATUSES = ("current", "superseded")
+
 # Retrieval
-RETRIEVE_LIMIT = 8
-RERANK_SIM_WEIGHT = 0.6
-RERANK_SCORE_WEIGHT = 0.4
+RETRIEVE_LIMIT = 8               # per record type (source chunks, decisions, lessons)
+NUM_CANDIDATES = 100
 
-# Condense
-CONDENSE_MAX_WORDS = 150
-
-# Lifecycle
-DEMOTE_SCORE, DEMOTE_MIN_VOTES = 0.35, 4
-RETIRE_SCORE, RETIRE_MIN_VOTES = 0.2, 6
-EXPIRY_DAYS = 30
-DEDUPE_SIMILARITY = 0.92
+# Learning
+DUPLICATE_SIMILARITY = 0.92      # proposed lesson this close to an approved one -> flag duplicate
+EXPIRY_DAYS = 30                 # approved lesson unused this long -> expired by the sweep
+PURGE_GRACE_DAYS = 7             # TTL index on purge_at = expires_at + this

@@ -4,18 +4,31 @@ router = APIRouter(prefix="/lessons")
 
 
 @router.get("")
-def list_lessons(request: Request):
-    # TODO(P2): team lessons by score, grouped by status
+def list_lessons(request: Request, project_id: str, status: str = "approved"):
     raise NotImplementedError
 
 
-@router.patch("/{lesson_id}")
-def edit_lesson(request: Request, lesson_id: str, body: dict):
-    # TODO(P2): admin only - edit text (re-embed) or mark wrong; log memory_event
+@router.post("/{lesson_id}/approve")
+def approve(request: Request, lesson_id: str, body: dict):
+    # TODO: {scope, text?}; team scope requires publish permission
+    raise NotImplementedError
+
+
+@router.post("/{lesson_id}/reject")
+def reject(request: Request, lesson_id: str):
+    raise NotImplementedError
+
+
+@router.post("/{lesson_id}/correct")
+def correct(request: Request, lesson_id: str, body: dict):
+    raise NotImplementedError
+
+
+@router.post("/{lesson_id}/retire")
+def retire(request: Request, lesson_id: str):
     raise NotImplementedError
 
 
 @router.delete("/{lesson_id}")
-def forget_lesson(request: Request, lesson_id: str):
-    # TODO(P2): admin only - hard delete; log 'forgotten' event without text
+def forget(request: Request, lesson_id: str):
     raise NotImplementedError

@@ -1,19 +1,22 @@
 # PromptForge: notes for Claude
 
-Hackathon project, built Nov 14, 2026 between 10:45 AM and 5:00 PM. The design is in docs/DESIGN.md; read it before any non-trivial change.
+Hackathon project for Memory You Can Govern (Toronto, Nov 14, 2026; submissions close 5:00 PM). README.md is the product spec, and docs/DESIGN.md maps it to code. Read both before any non-trivial change. docs/archive/ holds the superseded website-voting design.
 
 ## Non-negotiables
-- `team_id` always comes from the session, never from a request body.
-- `backend/app/repo/lessons.py` is the only module that queries `lessons`. Every `$vectorSearch` pre-filters on `team_id`.
-- `memory_events` is append-only. Every lesson change (steps 6–8) inserts a row with its `cause`.
-- The ElevenLabs key never reaches the browser: audio goes to `/transcribe` on our backend, and audio is not stored.
-- Generated HTML renders only in `<iframe sandbox="">`. No scripts.
-- No Streamlit, and the main screen is not a dashboard. The frontend is plain HTML/JS served by FastAPI.
+- Identity and membership come from the session, never from a request body.
+- All reads of lessons, decisions and sources go through `backend/app/repo/` and use a filter from `repo/scope.py`. Every `$vectorSearch` pre-filters on scope.
+- `proposed` lessons never reach a brief. Only `approved` lessons and `current` decisions are retrieved.
+- Every brief instruction cites a revision. Preferences never override requirements, and conflicts go to `open_questions`.
+- `memory_events` is append-only. Every approval, correction, scope change, retirement, expiry and forget writes one.
+- The only TTL index is on `lessons.purge_at`. Expiry is logged by the app sweep first.
+- API keys (Anthropic, Voyage, ElevenLabs) stay on the server. Audio is not stored.
+- Any generated HTML renders only in `<iframe sandbox="">`.
+- No Streamlit, and the main screen is not a dashboard. No frontend exists yet.
 
 ## Commands
-- Run: `uvicorn app.main:app --reload --app-dir backend`
+- Run (API only): `uvicorn app.main:app --reload --app-dir backend`
 - Test: `pytest backend/tests`
-- Atlas setup: `python scripts/setup_atlas.py`, then seed with `python scripts/seed.py`
+- Atlas setup: `python scripts/setup_atlas.py`, then `python scripts/seed.py --reset`
 
 ## Skills
-Repo skills live in `skills/` (symlinked to `.claude/skills/`): atlas-setup, memory-loop, governance-guardrails, demo-prep.
+`skills/` (symlinked to `.claude/skills/`): brief-pipeline, governance-guardrails, atlas-setup, demo-prep.
