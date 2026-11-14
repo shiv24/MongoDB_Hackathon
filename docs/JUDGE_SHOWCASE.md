@@ -1,16 +1,11 @@
-# Judge showcase: same request, visibly better instructions
+# Quick visual demo
 
-## Setup
-Run `python scripts/seed_software_showcase.py` once with Atlas and Voyage configured. Open the app as Alice in the Admin console workspace. The shared brain contains sample project history, shared components and engineering decisions. Keep the same generation-model settings for both runs.
+Open PromptForge as Alice in the Admin console workspace.
 
-## Visual walkthrough
-1. Click Use an example request: “Add search to the users table. Show sample results for a search for Alex.” Create prompt → Preview website → **Keep as before**.
-2. Click Use example feedback. It asks for a pale amber banner above active search results, with query, matching count and Clear search button. Click Suggest a lesson, review it, select **This project**, and approve.
-3. Click **Use the same request again**, then Create prompt. Point to **Learned guidance used** and its approved lesson. Click Preview website.
-4. Click **Compare before & after**. Show the same user request and model, the actual two saved outputs, and the visible search-summary change.
+1. **Build:** use the example request and click Build preview. The app creates a grounded prompt and sends it to the preview model automatically.
+2. **Refine:** type “When search is active, show a pale amber banner above the table with the query, result count and a Clear search button.” Click Remember for project & rebuild. This explicitly approves the text as project guidance.
+3. **Compare:** the app reruns the same request and opens the actual before-and-after outputs. Point to the amber banner and the newly cited lesson.
 
-Narration: “We didn't rewrite the request or manually improve the prompt. We taught the shared brain one preference. It supplied the new instructions to the same model.”
+Say: “Same request. Same model. Our team’s feedback changed the instructions.”
 
-Optional closing: switch to Bob and request Orders search to demonstrate project-wide reuse in a fresh session.
-
-The HTML preview is inert. Do not claim the buttons work or the backend exists. Model variation can affect other visual details; the cited lesson and matching instruction support the intended change, while a single pair is not a controlled benchmark. Check that the amber banner actually appears before presenting. A rehearsal leaves the lesson approved; do not present repeated learning as new. Pinning stores a run ID per demo identity in this browser; authorization is still checked when loading it. Old previews are historical snapshots, not current approved instructions.
+The generated prompt and evidence remain under View the prompt and what shaped it. Preview HTML is illustrative, not a working backend. Model variation may change other styling. If the new lesson is not cited, the comparison explicitly says so: allow indexing time and rebuild before claiming the change came from memory. Rehearsals leave approved memory; use the saved before/after pair or disclose existing lessons.

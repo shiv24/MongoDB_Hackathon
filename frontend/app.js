@@ -103,12 +103,13 @@ async function submitRequest(clarification = '') {
   state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers}});
   renderRun(); await loadContext();
   history.replaceState(null, '', `#run=${state.run._id}`);
-  $('brief-card').scrollIntoView({behavior:'smooth',block:'start'});
+  await generatePreview();
+  $('preview-card').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function tell(text) { busy($('send-btn'), 'Updating…', () => submitRequest(text)); }
-$('send-btn').addEventListener('click', e => busy(e.currentTarget, 'Creating…', async () => {
+$('send-btn').addEventListener('click', e => busy(e.currentTarget, 'Building…', async () => {
   show('request-error', false); show('request-status');
-  $('request-status').textContent = 'Finding relevant team knowledge and writing your prompt…';
+  $('request-status').textContent = 'Using project memory to write the prompt and build your preview…';
   try { await submitRequest(); }
   catch (err) { $('request-error').textContent = err.message; show('request-error'); }
   finally { show('request-status', false); }
@@ -286,7 +287,7 @@ function renderRun() {
   const hasBrief = !!r?.brief;
   show("brief-card", hasBrief);
   const hasPreview = !!r?.artifact && r.artifact.brief_revision === r.brief_revision && r.status !== 'stale';
-  show("feedback-card", hasBrief);
+  show("feedback-card", hasPreview);
   if (hasBrief && state.feedbackRunId !== r._id) {
     state.feedbackRunId = r._id;
     $("feedback-text").value = "";
@@ -389,6 +390,23 @@ async function submitFeedback() {
   $('feedback-status').textContent = result.proposed ? 'Suggested only — review and approve below.' : 'Feedback saved. No reusable lesson was identified. Try describing a rule for future tasks.';
   renderFeedbackLesson(result);
 }
+$('remember-rebuild').addEventListener('click', e => busy(e.currentTarget, 'Remembering and rebuilding…', async () => {
+  const text = $('feedback-text').value.trim();
+  if (!text) throw new Error('Tell us what to change first.');
+  if (state.previewing || $('send-btn').disabled) throw new Error('Wait for the current build to finish.');
+  const previous = structuredClone(state.run);
+  $('send-btn').disabled = true; $('session-user').disabled = true;
+  try {
+    const result = await api(`/runs/${previous._id}/feedback`, {method:'POST',body:{text,lesson:text}});
+    if (!result.proposed) throw new Error('No lesson was created. Your current preview is unchanged.');
+    await api(`/lessons/${result.proposed._id}/approve`, {method:'POST',body:{scope:'project',text}});
+    state.baseline = previous; sessionStorage.setItem(`pf-before-${state.me.user_id}`, previous._id);
+    $('type-input').value = previous.request;
+    toast('Saved to project memory. Rebuilding the same request…');
+    await submitRequest();
+    if (state.run?.artifact) $('compare-preview').click();
+  } finally { $('send-btn').disabled = false; $('session-user').disabled = false; }
+}));
 $('suggest-lesson').addEventListener('click', e => busy(e.currentTarget, 'Preparing lesson…', submitFeedback));
 
 function renderFeedbackLesson(result) {
