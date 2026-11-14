@@ -1,88 +1,35 @@
-# PromptForge — Technical Design
+# PromptForge technical design
 
-How the scaffold implements the product in [README.md](../README.md). The README is the spec; if they disagree, the README wins and this file gets fixed. The earlier website-voting design is kept for reference in [archive/website-voting-design.md](archive/website-voting-design.md).
+The README defines setup and product behavior. This design supersedes the partner-only implementation; the team authorized an existing OpenAI API budget.
 
-## Stack
+## Two request paths, one memory policy
 
-MongoDB Atlas plus the event's partner resources only: **ElevenLabs Agents** (conversation and the only LLM), **Voyage AI** (embeddings, reranking), **LangSmith** (tracing). No other model APIs.
+- Direct: typed request or ElevenLabs transcription → `/api/build` → Voyage + Atlas retrieval → OpenAI Responses structured brief → review.
+- Conversational: ElevenLabs Agent → scoped tool webhooks → saved brief → review. Browser SDK is loaded only when starting a conversation.
+- Both: recheck citations, permissions, expiry and revisions → Markdown export or OpenAI HTML/CSS preview → recorded outcomes → proposed lesson → UI approval.
 
-## Pipeline
+## Ownership
 
-```
-user  ⇄ ElevenLabs agent (voice or text, private agent started with a signed URL from POST /api/voice/session)
-  1. clarify      agent asks ONE question if two documents/features fit                (agent prompt)
-  2. context      tool get_project_context → scoped $vectorSearch + Voyage rerank      routes/agent_tools.py → agent/retrieve.py
-  3. brief        tool save_brief → citations validated, run updated; UI polls it      agent/brief.py, agent/pipeline.py
-  4. review       user edits / answers questions (answers go back to the agent)
-  5. export       recheck cited memory (stale → 409 + changes) → Markdown for Claude Code   agent/recheck.py
-  6. result       user records acceptance-check outcomes (outcome evidence)
-  7. learn        tool record_feedback → proposed lesson; approve_lesson only after an explicit yes
-```
+`repo/scope.py` defines retrieval scope. Runs are owner-private because their provenance may contain personal lessons. Browser sessions and agent tokens reload current user memberships. Logout invalidates agent tokens. Team lessons require publisher/admin permission. The demo user picker is not production authentication.
 
-**Identity for tool calls.** `POST /api/voice/session` (logged-in user, project member) mints a random token, stores only its SHA-256 hash in `agent_sessions` (TTL 2 h), and returns it with the signed URL. The browser passes it as the dynamic variable `secret__pf_token`; ElevenLabs substitutes it into the `X-PF-Session` header of every tool call and never sends it to the LLM. `routes/agent_tools.py` resolves the token to the user's session, so the model cannot choose a team, project or user. An optional `AGENT_TOOL_SECRET` header adds a shared secret.
+`agent/brief.py` parses citation keys; `agent/recheck.py` checks cited records before handoff. Direct requests receive immutable U1 provenance for explicit user instructions. Invalid citations or uncited constraints block export; semantic entailment is not proven automatically.
 
-## Data model
+`routes/build.py` owns direct briefs and preview generation. The generation lock prevents overlapping requests for one run. Cached previews belong to a brief revision; edits invalidate them. Generation uses no tools and never executes code. HTML is sanitized and rendered in a no-permissions iframe with restrictive CSP. Preview functionality is deliberately limited to static HTML/CSS.
 
-One Atlas database, `promptforge`. Every record carries `team_id`; project-level records also carry `project_id`.
+`agent/llm.py` owns OpenAI calls: configurable models, bounded context/output, structured output, timeouts, no automatic retry, store=false. One failed request surfaces an actionable error. The frontend retries only on a new user action.
 
-| Collection | Key fields | Indexes |
-|---|---|---|
-| `users` | `_id, name, team_id, project_ids, role (member / publisher / admin)` | `team_id` |
-| `projects` | `_id, team_id, name` | `team_id` |
-| `sources` | `team_id, project_id, source_id, title, revision, chunk_index, text, embedding` | Vector Search (filters `team_id, project_id`); `{source_id, revision}` |
-| `decisions` | `team_id, project_id, text, owner_id, revision, supersedes, status (current / superseded), embedding` | Vector Search (filters `team_id, project_id, status`) |
-| `lessons` | `team_id, project_id, owner_id, scope (personal / project / team), text, revision, supersedes, status (proposed / approved / rejected / superseded / retired / expired), evidence_run_id, feedback_id, approved_by, task_tags, model, last_used_at, expires_at, purge_at, embedding` | Vector Search (filters `team_id, project_id, owner_id, scope, status`); TTL on `purge_at`; `{team_id, expires_at}` |
-| `runs` | `team_id, project_id, user_id, request, author {kind: elevenlabs_agent, conversation_id}, brief {objective, requirements, current_decisions, implementation_context, preferences, acceptance_checks, open_questions, assumptions}, brief_revision, answers, provenance [{key, type, id, revision}], status (drafting / needs_answers / draft / stale / exported / reviewed), checks [{name, result, method: user_review, evidence}], outcome, created_at` | `{team_id, project_id, created_at}`; `provenance.id` |
-| `agent_sessions` | `token_hash, session, project_id, current_run_id, expires_at` | unique `token_hash`; TTL on `expires_at` |
-| `feedback` | `team_id, run_id, user_id, text, proposed_lesson_id, created_at` | `run_id` |
-| `memory_events` | `record_type, record_id, team_id, event, actor, cause, before, after, at` | `{record_id, at}`; JSON Schema validation; insert-only |
+`routes/voice.py` provides bounded audio upload transcription and optional signed ElevenLabs agent sessions. Audio is not stored by this app. Provider retention follows the provider account settings.
 
-## Governance rules in code
+## Memory lifecycle
 
-| README control | Where it lives |
-|---|---|
-| Access | `repo/scope.py` builds every pre-filter from the session (`lesson_filter`, `project_filter`). Lessons: own team AND approved AND (team scope OR this project OR own personal). Non-member project → `ScopeError` → 403 |
-| Approval | `proposed` lessons are never retrieved. `repo.lessons.approve` checks the caller may publish at the chosen scope (team scope needs `publisher` or `admin`) |
-| Attribution | `owner_id`, `approved_by`, `evidence_run_id`, `revision` on lessons; `owner_id`, `revision` on decisions; `provenance` on runs |
-| Correction | New revision with `supersedes`; old one set to `superseded`. Only `current` decisions and `approved` lessons are retrieved |
-| Expiry | `repo.lessons.expire_due` runs before every lesson read: sets `expired` and logs it. TTL on `purge_at` (= `expires_at` + 7 days) deletes later. Citing a lesson in an exported brief pushes both forward |
-| Index lag | Atlas Search indexes sync asynchronously, so vector hits for lessons and decisions are re-checked against the collection before use |
-| Forgetting | Lesson removed from future use; runs citing it marked `stale`; event logged without the text. Not a complete erasure (README) |
-| Run evidence | `runs.provenance`, `runs.author` (agent conversation id), `runs.checks` (user-reported, labelled `user_review`), LangSmith traces. `export` rechecks provenance revisions first and returns the change if any moved |
+Proposed → UI-approved at personal/project/team scope → corrected, retired, expired or forgotten. Read/export checks exclude expired records without relying on background TTL timing. Corrections use supersession. Forgetting marks affected runs stale; historical content is not fully erased. Events are append-only in app code; database-role enforcement must be configured separately.
 
-## API
+Agent tools cannot approve. A source or model instruction cannot grant approval or choose an identity. Retrieved text is treated as untrusted data in the direct brief prompt. Approval endpoints use the current browser session.
 
-All endpoints are under `/api`; the frontend is served at `/`.
+## Services and credits
 
-**UI (session cookie)**
+Atlas Sandbox stores state and memory; direct Voyage API handles embeddings/reranking; ElevenLabs handles dictation and live conversation; OpenAI handles direct briefs, lesson suggestions and preview generation; LangSmith records operation traces with inputs/outputs omitted. Credentials stay server-side. Exact event-credit coverage must be verified in each account.
 
-| Method | Path | Does |
-|---|---|---|
-| GET | `/users` · POST `/login` · GET `/me` · POST `/logout` | Demo login; session loaded from the database |
-| POST | `/voice/session` | `{project_id}` → `{agent_session_id, signed_url, dynamic_variables}` for the ElevenLabs agent |
-| GET | `/voice/session/{id}/run` | The run the agent is currently drafting (UI polls it) |
-| GET | `/projects` · `/projects/{id}/context` | Projects; sources, decisions, visible lessons, recent runs |
-| POST | `/projects/{id}/sources` · `/projects/{id}/decisions` · `/projects/decisions/{id}/supersede` | Project setup and correction |
-| GET | `/projects/decisions/{id}/history` · `/lessons/{id}/history` | Memory events |
-| GET | `/runs/{id}` · PATCH `/runs/{id}/brief` | Run; user edits (citations re-validated) |
-| GET | `/runs/{id}/export` | Recheck → Markdown (409 with `changes` or `blocking_questions`) |
-| POST | `/runs/{id}/outcome` | `{results: [{index, result, evidence}], tool}` |
-| POST | `/runs/{id}/feedback` | `{text, lesson?}` → proposed lesson |
-| GET | `/lessons?project_id=&status=` · POST `/lessons/{id}/approve|reject|correct|retire` · DELETE `/lessons/{id}` | Lesson lifecycle |
+## Remaining live verification
 
-**Agent tools (header `X-PF-Session`, optional `X-PF-Agent-Key`)**
-
-| Tool | Path | Does |
-|---|---|---|
-| `get_project_context` | POST `/agent/context` | `{request, search_query}` → `run_id` + keyed context `[S#] [D#] [L#]` |
-| `save_brief` | POST `/agent/brief` | `{run_id, objective, requirements[], …, blocking_questions[], resolved_questions[]}` |
-| `record_feedback` | POST `/agent/feedback` | `{run_id, feedback, lesson?, conflicts[]}` → proposed lesson + allowed scopes |
-| `approve_lesson` / `reject_lesson` | POST `/agent/lessons/approve|reject` | `{lesson_id, scope}` |
-
-Errors: 401 not logged in / bad token, 403 scope or permission, 404 not found or not visible, 409 stale context or blocking questions, 400 invalid input, 503 missing configuration.
-
-## Open decisions
-
-- **In-app execution.** Not built: no partner credit covers generation, so the brief is exported to the user's coding tool.
-- **Agent LLM.** `ELEVENLABS_AGENT_LLM` (default `claude-sonnet-5-5`) runs inside ElevenLabs on ElevenLabs credits; any model on ElevenLabs' list works.
-- **Insert-only role on the sandbox tier.** Verify custom roles are available; otherwise rely on code + JSON Schema and say so.
+Configure keys, run doctor --live, initialize/seed the sandbox, run Atlas isolation tests, then exercise direct brief → clarification → export → preview → feedback → approve → new session. Separately verify microphone transcription and optional ElevenLabs tool callbacks over the tunnel. No live-provider pass is claimed by mocked tests.

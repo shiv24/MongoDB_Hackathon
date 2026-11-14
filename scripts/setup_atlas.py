@@ -104,6 +104,7 @@ def main():
         print(".", end="", flush=True)
         time.sleep(5)
     print("\nnot READY yet:", statuses, "- re-run later or check the Atlas UI")
+    sys.exit(1)
 
 
 if __name__ == "__main__":

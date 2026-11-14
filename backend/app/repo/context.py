@@ -97,6 +97,9 @@ def get_decision(session: dict, decision_id: str) -> dict:
 
 def supersede_decision(session: dict, decision_id: str, new_text: str) -> dict:
     old = get_decision(session, decision_id)
+    if old["owner_id"] != session["user_id"] and session["role"] not in config.TEAM_PUBLISH_ROLES:
+        from app.errors import Forbidden
+        raise Forbidden("Only the decision owner or a publisher may supersede it")
     if old["status"] != "current":
         raise ValueError("only the current revision of a decision can be corrected")
     db = get_db()

@@ -68,6 +68,10 @@ def get_project_context(body: ContextIn, x_pf_session: str | None = Header(None)
 @router.post("/brief")
 def save_brief(body: BriefIn, x_pf_session: str | None = Header(None), x_pf_agent_key: str | None = Header(None)):
     row = _session(x_pf_session, x_pf_agent_key)
+    from app.repo import runs
+    from app.errors import Forbidden
+    if runs.get(row["session"], body.run_id)["project_id"] != row["project_id"]:
+        raise Forbidden("Run belongs to another project")
     run = pipeline.save_brief(row["session"], body.run_id, body.model_dump())
     b = run["brief"]
     uncited = [i["text"] for s in ("requirements", "current_decisions", "implementation_context", "preferences")
@@ -92,8 +96,8 @@ def record_feedback(body: FeedbackIn, x_pf_session: str | None = Header(None), x
 @router.post("/lessons/approve")
 def approve_lesson(body: LessonDecision, x_pf_session: str | None = Header(None), x_pf_agent_key: str | None = Header(None)):
     row = _session(x_pf_session, x_pf_agent_key)
-    l = lessons.approve(row["session"], body.lesson_id, body.scope or "personal")
-    return {"status": l["status"], "scope": l["scope"], "lesson": l["text"]}
+    from app.errors import Forbidden
+    raise Forbidden("Approve this lesson in the app; agent tools cannot grant user consent.")
 
 
 @router.post("/lessons/reject")

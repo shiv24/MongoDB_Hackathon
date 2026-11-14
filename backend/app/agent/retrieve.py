@@ -7,7 +7,7 @@ from app.agent import embed
 from app.repo import context, lessons
 
 
-@traceable(run_type="retriever", name="promptforge.gather_context")
+@traceable(run_type="retriever", name="promptforge.gather_context", process_inputs=lambda _: {}, process_outputs=lambda _: {})
 def gather(session: dict, project_id: str, query: str) -> list[dict]:
     """Return provenance entries keyed S1.., D1.., L1.. for the brief to cite."""
     vec = embed.query(query)

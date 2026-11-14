@@ -1,6 +1,6 @@
 // PromptForge UI: talk to the ElevenLabs agent -> cited brief (live) -> export for Claude Code
 // -> record result -> feedback -> approved lesson. Server text is inserted with textContent only.
-import { Conversation } from "https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.32.1/+esm";
+
 
 const $ = (id) => document.getElementById(id);
 const state = { me: null, projectId: null, run: null, context: null, conversation: null, agentSessionId: null, poll: null };
@@ -32,7 +32,7 @@ function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.rem
 
 async function busy(btn, label, fn) {
   const old = btn.textContent; btn.disabled = true; btn.textContent = label;
-  try { return await fn(); } catch (e) { toast(e.message); throw e; } finally { btn.disabled = false; btn.textContent = old; }
+  try { return await fn(); } catch (e) { toast(e.message); } finally { btn.disabled = false; btn.textContent = old; }
 }
 
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
@@ -66,7 +66,6 @@ $("project-select").addEventListener("change", async (e) => {
   await endConversation(); state.projectId = e.target.value; state.run = null; renderRun(); await loadContext();
 });
 
-// ---------- conversation with the ElevenLabs agent ----------
 function addLine(role, text) {
   show("transcript");
   const list = $("transcript");
@@ -77,6 +76,7 @@ function addLine(role, text) {
 async function startConversation(textOnly) {
   if (!state.projectId) throw new Error("Choose a user and project first.");
   if (state.conversation) return;
+  const { Conversation } = await import("https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.32.1/+esm");
   const s = await api("/voice/session", { method: "POST", body: { project_id: state.projectId } });
   state.agentSessionId = s.agent_session_id;
   $("transcript").replaceChildren();
@@ -86,33 +86,30 @@ async function startConversation(textOnly) {
     textOnly,
     connectionType: "websocket",
     onConnect: () => { $("agent-status").textContent = textOnly ? "Connected (text)" : "Listening…"; },
-    onDisconnect: () => { $("agent-status").textContent = "Conversation ended"; stopConversationUi(); },
+    onDisconnect: () => { pollRun(); $("agent-status").textContent = "Conversation ended"; stopConversationUi(); },
     onError: (msg) => toast(`Agent error: ${msg}`),
     onModeChange: ({ mode }) => { if (!textOnly) $("agent-status").textContent = mode === "speaking" ? "Agent speaking…" : "Listening…"; },
     onMessage: ({ message, role }) => addLine(role, message),
   });
-  show("talk-btn", false); show("type-btn", false); show("end-btn"); show("type-row", textOnly);
+  show("agent-btn", false); show("talk-btn", false); show("type-btn", false); show("end-btn"); show("type-row", true);
   clearInterval(state.poll);
   state.poll = setInterval(pollRun, 2000);   // the agent saves briefs through tools; mirror them here
 }
 
 function stopConversationUi() {
-  state.conversation = null; clearInterval(state.poll); pollRun();
-  show("talk-btn"); show("type-btn"); show("end-btn", false); show("type-row", false);
+  state.conversation = null; clearInterval(state.poll);
+  show("agent-btn"); show("talk-btn"); show("type-btn"); show("end-btn", false); show("type-row", true);
 }
 
-async function endConversation() { if (state.conversation) { try { await state.conversation.endSession(); } catch { /* already closed */ } stopConversationUi(); } }
+async function endAgentConversation() { if (state.conversation) { try { await state.conversation.endSession(); } catch { /* already closed */ } stopConversationUi(); } }
 
-function tell(text) {
+function tellAgent(text) {
   if (!state.conversation) { toast("Start a conversation with the agent first."); return false; }
   state.conversation.sendUserMessage(text); addLine("user", text); return true;
 }
 
-$("talk-btn").addEventListener("click", (e) => busy(e.target, "Connecting…", () => startConversation(false)));
-$("type-btn").addEventListener("click", (e) => busy(e.target, "Connecting…", () => startConversation(true)));
-$("end-btn").addEventListener("click", endConversation);
-$("send-btn").addEventListener("click", () => { const v = $("type-input").value.trim(); if (v && tell(v)) $("type-input").value = ""; });
-$("type-input").addEventListener("keydown", (e) => { if (e.key === "Enter") $("send-btn").click(); });
+$('agent-btn').addEventListener('click', e => busy(e.target,'Connecting…',()=>startConversation(false)));
+$('end-btn').addEventListener('click', endAgentConversation);
 
 async function pollRun() {
   if (!state.agentSessionId) return;
@@ -123,6 +120,59 @@ async function pollRun() {
     if (changed) { state.run = run; renderRun(); renderContext(); }
   } catch { /* transient */ }
 }
+
+
+// ---------- direct request and optional microphone ----------
+let recording = null;
+let microphone = null;
+async function endConversation() {
+  await endAgentConversation();
+  if (recording && recording.state !== 'inactive') recording.stop();
+  if (microphone) microphone.getTracks().forEach(t => t.stop());
+  state.agentSessionId = null;
+}
+async function submitRequest(clarification = '') {
+  if(state.conversation) { tellAgent(clarification || $('type-input').value); return; }
+  if (!state.projectId) throw new Error('Choose a user and project first.');
+  const request = clarification && state.run ? state.run.request : $('type-input').value.trim();
+  if (!request) throw new Error('Describe what you want built.');
+  const answers = clarification ? (state.run?.clarification_text || '') + '\n' + clarification : '';
+  state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers}});
+  renderRun(); await loadContext();
+}
+function tell(text) { if(state.conversation) return tellAgent(text); busy($('send-btn'), 'Updating…', () => submitRequest(text)); }
+$('send-btn').addEventListener('click', e => busy(e.target, 'Building brief…', () => submitRequest()));
+$('type-input').addEventListener('keydown', e => { if(e.key === 'Enter') $('send-btn').click(); });
+$('type-btn').addEventListener('click', () => $('type-input').focus());
+$('talk-btn').addEventListener('click', async () => {
+  try {
+    if (recording && recording.state === 'recording') { recording.stop(); return; }
+    microphone = await navigator.mediaDevices.getUserMedia({audio:true});
+    const parts=[];
+    const stream = microphone;
+    const recorder = new MediaRecorder(stream);
+    recording = recorder;
+    recording.ondataavailable = e => parts.push(e.data);
+    recording.onstop = async () => {
+      stream.getTracks().forEach(t=>t.stop());
+      $('talk-btn').textContent='🎙 Record request';
+      try {
+        const form=new FormData(); form.append('audio',new Blob(parts,{type:recorder.mimeType}),'request.webm');
+        const response=await fetch('/api/voice/transcribe',{method:'POST',body:form});
+        const result=await response.json();
+        if(!response.ok) throw new Error(result.error || 'Transcription failed');
+        $('type-input').value=result.text; toast('Review the transcript, then build the brief.');
+      } catch(e) { toast(e.message); }
+    };
+    recording.start(); $('talk-btn').textContent='Stop recording';
+    setTimeout(()=>{if(recorder.state==='recording')recorder.stop();},60000);
+  } catch(e) { toast('Microphone unavailable. You can type your request.'); }
+});
+$('generate-btn').addEventListener('click', e => busy(e.target,'Generating preview…',async()=>{
+  try { state.run=await api(`/build/${state.run._id}/preview`,{method:'POST'}); }
+  catch(err) { state.run=await api(`/runs/${state.run._id}`); renderRun(); throw err; }
+  renderRun();
+}));
 
 // ---------- project context sidebar ----------
 async function loadContext() {
@@ -155,6 +205,7 @@ function renderContext() {
   $("lessons").replaceChildren(...c.lessons.map((l) => el("li", { class: `${l.status} ${used.has(l._id) ? "used" : ""}` },
     el("span", { class: "text" }, l.text),
     el("span", { class: "meta" }, chip(l.status), ` ${l.scope} · rev ${l.revision} · by ${l.owner_id}${l.approved_by ? `, approved by ${l.approved_by}` : ""} `,
+      l.status === "proposed" ? el("button", {class:"link", onclick:()=>renderProposal({proposed:l, scopes_allowed:state.me.role === "member" ? ["personal","project"] : ["personal","project","team"]})}, "review proposal") : null,
       l.status === "approved" ? [
         el("button", { class: "link", onclick: () => lessonAction(l, "correct") }, "correct"),
         el("button", { class: "link", onclick: () => lessonAction(l, "retire") }, "retire"),
@@ -212,7 +263,7 @@ function citeChips(keys) {
   const prov = Object.fromEntries((state.run.provenance || []).map((e) => [e.key, e]));
   return (keys || []).map((k) => {
     const e = prov[k]; if (!e) return null;
-    const label = e.type === "source" ? `Source "${e.title}" rev ${e.revision}` : e.type === "decision" ? `Team decision rev ${e.revision} (owner ${e.owner_id})` : `Approved ${e.scope} lesson rev ${e.revision}`;
+    const label = e.type === "user" ? "Your explicit request or clarification" : e.type === "source" ? `Source "${e.title}" rev ${e.revision}` : e.type === "decision" ? `Team decision rev ${e.revision} (owner ${e.owner_id})` : `Approved ${e.scope} lesson rev ${e.revision}`;
     return el("span", { class: "cite", title: `${label}\n\n${e.text}` }, k);
   });
 }
@@ -223,6 +274,9 @@ function renderRun() {
   show("brief-card", hasBrief);
   show("result-card", hasBrief && ["exported", "reviewed"].includes(r.status));
   show("feedback-card", hasBrief && ["exported", "reviewed"].includes(r.status));
+  show('preview-card', !!r?.artifact && r.artifact.brief_revision === r.brief_revision && r.status !== 'stale');
+  $('preview-frame').srcdoc = r?.artifact?.html || '';
+  show('handoff', false);
   if (!hasBrief) return;
   $("run-status").replaceChildren(chip(r.status));
   $("brief-rev").textContent = r.brief_revision ? `revision ${r.brief_revision} by the agent` : "";
@@ -284,9 +338,8 @@ $("export-btn").addEventListener("click", (e) => busy(e.target, "Rechecking memo
   catch (err) { if (err.status === 409) { state.run = await api(`/runs/${state.run._id}`); renderRun(); } throw err; }
   const a = el("a", { href: URL.createObjectURL(new Blob([md], { type: "text/markdown" })), download: "promptforge-brief.md" });
   a.click(); URL.revokeObjectURL(a.href);
-  try { await navigator.clipboard.writeText(md); } catch { /* clipboard blocked */ }
-  show("handoff");
-  state.run = await api(`/runs/${state.run._id}`); renderRun(); await loadContext();
+  try { await navigator.clipboard.writeText(md); toast("Brief downloaded and copied."); } catch { toast("Brief downloaded. Clipboard unavailable."); }
+  state.run = await api(`/runs/${state.run._id}`); renderRun(); show("handoff"); await loadContext();
 }));
 
 $("outcome-btn").addEventListener("click", (e) => busy(e.target, "Saving…", async () => {
@@ -299,7 +352,7 @@ $("outcome-btn").addEventListener("click", (e) => busy(e.target, "Saving…", as
 // ---------- feedback -> proposed lesson -> approval ----------
 $("feedback-btn").addEventListener("click", (e) => busy(e.target, "Saving…", async () => {
   const text = $("feedback-text").value.trim(); if (!text) throw new Error("Write the feedback first.");
-  if (state.conversation && !$("feedback-lesson").value.trim()) { tell(`Feedback on the result: ${text}`); return; }
+
   const r = await api(`/runs/${state.run._id}/feedback`, { method: "POST", body: { text, lesson: $("feedback-lesson").value } });
   renderProposal(r); await loadContext();
 }));
@@ -329,7 +382,7 @@ function renderProposal(r) {
       }) }, "Approve lesson"))));
 }
 
-// lessons approved by voice show up in the sidebar
-setInterval(() => { if (state.conversation) loadContext().catch(() => {}); }, 5000);
 
+
+setInterval(()=>{if(state.conversation) loadContext().catch(()=>{});},5000);
 init().catch((e) => toast(e.message));

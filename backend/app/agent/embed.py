@@ -10,7 +10,7 @@ _client = None
 def _c():
     global _client
     if _client is None:
-        _client = voyageai.Client(api_key=config.VOYAGE_API_KEY or None)
+        _client = voyageai.Client(api_key=config.VOYAGE_API_KEY or None, timeout=20, max_retries=1)
     return _client
 
 
@@ -25,12 +25,12 @@ def document(text: str) -> list[float]:
     return documents([text])[0]
 
 
-@traceable(run_type="embedding", name="voyage.embed_query")
+@traceable(run_type="embedding", name="voyage.embed_query", process_inputs=lambda _: {}, process_outputs=lambda _: {})
 def query(text: str) -> list[float]:
     return _c().embed([text], model=config.EMBED_MODEL, input_type="query").embeddings[0]
 
 
-@traceable(run_type="retriever", name="voyage.rerank")
+@traceable(run_type="retriever", name="voyage.rerank", process_inputs=lambda _: {}, process_outputs=lambda _: {})
 def rerank(query_text: str, docs: list[str], top_k: int) -> list[tuple[int, float]]:
     """Return [(index into docs, relevance score)] best first."""
     if not docs:

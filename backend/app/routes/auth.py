@@ -27,6 +27,9 @@ def login(request: Request, body: Login):
 
 @router.post("/logout")
 def logout(request: Request):
+    from app.db import get_db
+    if request.session.get("user_id"):
+        get_db().agent_sessions.delete_many({"session.user_id": request.session["user_id"]})
     request.session.clear()
     return {"ok": True}
 

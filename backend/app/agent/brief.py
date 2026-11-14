@@ -2,7 +2,7 @@
 normalizes, validates citations, and renders Markdown for export to a coding tool (e.g. Claude Code)."""
 import re
 
-CITE = re.compile(r"\[([SDL]\d+)\]")
+CITE = re.compile(r"\[([SDLU]\d+)\]")
 SECTIONS = ("requirements", "current_decisions", "implementation_context", "preferences", "acceptance_checks")
 
 
@@ -21,7 +21,7 @@ def context_block(entries: list[dict]) -> str:
 
 def _item(text: str) -> dict:
     keys = list(dict.fromkeys(CITE.findall(text)))
-    clean = re.sub(r"\s*\[[SDL]\d+\]", "", text).strip()
+    clean = re.sub(r"\s*\[[SDLU]\d+\]", "", text).strip()
     return {"text": clean, "sources": keys}
 
 
@@ -50,11 +50,17 @@ def parse_resolved(lines: list[str]) -> list[dict]:
 
 def validate_citations(brief: dict, entries: list[dict]) -> dict:
     """Drop citation keys that don't exist; flag items left without any citation."""
+    if not isinstance(brief.get("objective"), str) or not brief["objective"].strip():
+        raise ValueError("Brief needs an objective")
     valid = {e["key"] for e in entries}
     unknown = set()
     for section in ("requirements", "current_decisions", "implementation_context", "preferences",
                     "acceptance_checks", "open_questions"):
+        if not isinstance(brief.get(section, []), list):
+            raise ValueError("Brief sections must be lists")
         for item in brief.get(section, []):
+            if not isinstance(item, dict) or not isinstance(item.get("text"), str) or not isinstance(item.get("sources", []), list):
+                raise ValueError("Invalid brief item")
             bad = [k for k in item.get("sources", []) if k not in valid]
             unknown.update(bad)
             item["sources"] = [k for k in item.get("sources", []) if k in valid]
@@ -104,6 +110,6 @@ def to_markdown(run: dict) -> str:
         if not e:
             continue
         label = {"source": f"source \"{e.get('title')}\"", "decision": "team decision",
-                 "lesson": f"{e.get('scope')} lesson"}[e["type"]]
+                 "lesson": f"{e.get('scope')} lesson", "user": "user request"}[e["type"]]
         out.append(f"- [{k}] {label} `{e['id']}` revision {e['revision']}: {e['text'][:200]}")
     return "\n".join(out) + "\n"

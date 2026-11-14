@@ -24,18 +24,19 @@
       <!-- 1. Request: conversation with the ElevenLabs agent -->
       <section class="card" id="request-card">
         <h2><span class="step">1</span> Request</h2>
-        <p class="hint">Talk to the PromptForge agent. It pulls your project's context from Atlas and writes a cited brief.</p>
+        <p class="hint">Describe what you want built. PromptForge finds project context and prepares a brief for review.</p>
         <div class="row">
-          <button id="talk-btn" type="button">🎙 Start talking</button>
+          <button id="agent-btn" type="button">Live voice conversation</button>
+          <button id="talk-btn" type="button">🎙 Record request</button>
           <button id="type-btn" class="secondary" type="button">Type instead</button>
           <span id="agent-status" class="muted"></span>
           <span class="spacer"></span>
           <button id="end-btn" class="secondary hidden" type="button">End conversation</button>
         </div>
         <ul id="transcript" class="transcript hidden"></ul>
-        <div id="type-row" class="row hidden">
+        <div id="type-row" class="row">
           <input id="type-input" placeholder="On that project doc, can we build the signup page? Keep it consistent with what we decided.">
-          <button id="send-btn" type="button">Send</button>
+          <button id="send-btn" type="button">Build brief</button>
         </div>
       </section>
 
@@ -47,14 +48,16 @@
         <div class="row">
           <button id="save-brief-btn" class="secondary hidden" type="button">Save edits</button>
           <span class="spacer"></span>
+          <button id="generate-btn" type="button">Generate website preview</button>
           <button id="export-btn" type="button">Export for Claude Code</button>
         </div>
         <div id="handoff" class="callout hidden">
-          <strong>Brief exported.</strong> It was downloaded as <code>promptforge-brief.md</code> and copied to your clipboard. In your project folder, run:
+          <strong>Brief exported.</strong> It was downloaded as <code>promptforge-brief.md</code> (clipboard copying is attempted too). In your project folder, run:
           <pre id="handoff-cmd">claude "Implement the brief in promptforge-brief.md. Follow every requirement and decision, and check each acceptance check."</pre>
         </div>
       </section>
 
+      <section class="card hidden" id="preview-card"><h2>Website preview</h2><p class="hint">HTML/CSS prototype. Scripts and network access are disabled. Review acceptance checks below; generation does not prove they pass.</p><iframe id="preview-frame" title="Generated website preview" sandbox="" referrerpolicy="no-referrer" style="width:100%;height:600px;border:1px solid #ddd"></iframe></section>
       <!-- 3. Result review: outcome evidence -->
       <section class="card hidden" id="result-card">
         <h2><span class="step">3</span> Result</h2>

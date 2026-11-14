@@ -14,7 +14,7 @@ def create(session: dict, project_id: str, request_text: str, **fields) -> dict:
 
 def get(session: dict, run_id: str) -> dict:
     doc = get_db().runs.find_one({"_id": run_id, "team_id": session["team_id"]})
-    if not doc or doc["project_id"] not in session["project_ids"]:
+    if not doc or doc["project_id"] not in session["project_ids"] or doc["user_id"] != session["user_id"]:
         raise NotFound(f"run {run_id} not found")
     return doc
 
@@ -27,7 +27,7 @@ def update(session: dict, run_id: str, fields: dict) -> dict:
 
 def recent(session: dict, project_id: str, limit: int = 20) -> list[dict]:
     scope.require_project(session, project_id)
-    return list(get_db().runs.find({"team_id": session["team_id"], "project_id": project_id},
+    return list(get_db().runs.find({"team_id": session["team_id"], "project_id": project_id, "user_id": session["user_id"]},
                                    {"request": 1, "status": 1, "created_at": 1, "user_id": 1})
                 .sort("created_at", -1).limit(limit))
 

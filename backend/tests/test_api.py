@@ -39,6 +39,7 @@ def client(db, monkeypatch):
     monkeypatch.setattr(lessons, "similar_approved", fake_lessons)
     monkeypatch.setattr(embed, "rerank", lambda q, docs, k: [(i, 0.5) for i in range(min(k, len(docs)))])
 
+    monkeypatch.setattr(config, "AGENT_TOOL_SECRET", "")
     monkeypatch.setattr(config, "ELEVENLABS_API_KEY", "test")
     monkeypatch.setattr(config, "ELEVENLABS_AGENT_ID", "agent_test")
 
@@ -109,7 +110,8 @@ def test_agent_drafts_user_exports_feedback_becomes_lesson(client, db):
     ctx2 = client.post("/api/agent/context", json={"request": "build the signup page", "search_query": "signup"}, headers=h).json()
     assert "[L1]" not in ctx2["context"]
 
-    ok = client.post("/api/agent/lessons/approve", headers=h, json={"lesson_id": fb["proposed_lesson_id"], "scope": "project"}).json()
+    assert client.post("/api/agent/lessons/approve", headers=h, json={"lesson_id": fb["proposed_lesson_id"], "scope": "project"}).status_code == 403
+    ok = client.post(f"/api/lessons/{fb["proposed_lesson_id"]}/approve", json={"scope": "project"}).json()
     assert ok["status"] == "approved"
     ctx3 = client.post("/api/agent/context", json={"request": "build the signup page", "search_query": "signup"}, headers=h).json()
     assert "[L1] approved project preference rev 1: Always include a mobile layout below 600px." in ctx3["context"]

@@ -14,7 +14,7 @@ def get_db():
     if _db is None:
         if not config.MONGODB_URI:
             raise RuntimeError("MONGODB_URI is not set - copy .env.example to .env and fill it in")
-        _db = MongoClient(config.MONGODB_URI, appname="promptforge", tz_aware=True)[config.MONGODB_DB]
+        _db = MongoClient(config.MONGODB_URI, appname="promptforge", tz_aware=True, serverSelectionTimeoutMS=8000)[config.MONGODB_DB]
     return _db
 
 

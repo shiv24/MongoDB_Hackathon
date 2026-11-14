@@ -52,4 +52,8 @@ def record_outcome(request: Request, run_id: str, body: OutcomeIn):
 
 @router.post("/{run_id}/feedback")
 def feedback(request: Request, run_id: str, body: FeedbackIn):
-    return pipeline.feedback(current(request), run_id, body.text, body.lesson)
+    s = current(request)
+    runs.get(s, run_id)
+    from app.agent import llm
+    lesson = body.lesson or llm.propose(body.text)
+    return pipeline.feedback(s, run_id, body.text, lesson)

@@ -38,3 +38,12 @@ def install(app) -> None:
     app.add_exception_handler(Conflict, handler(409))
     app.add_exception_handler(ValueError, handler(400))
     app.add_exception_handler(RuntimeError, handler(503))  # missing configuration / upstream unavailable
+
+    from pymongo.errors import PyMongoError
+    import httpx
+    async def database_error(request, exc):
+        return JSONResponse({'error':'Database unavailable. Check MONGODB_URI, Atlas network access and setup.'},status_code=503)
+    async def upstream_error(request, exc):
+        return JSONResponse({'error':'Provider request failed. Check credentials, quota, model access and connectivity.'},status_code=502)
+    app.add_exception_handler(PyMongoError, database_error)
+    app.add_exception_handler(httpx.HTTPError, upstream_error)

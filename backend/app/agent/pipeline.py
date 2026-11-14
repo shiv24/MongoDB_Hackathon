@@ -28,7 +28,7 @@ def project(session: dict, project_id: str) -> dict:
     return p
 
 
-@traceable(name="promptforge.start_draft")
+@traceable(name="promptforge.start_draft", process_inputs=lambda _: {}, process_outputs=lambda _: {})
 def start_draft(session: dict, project_id: str, request: str, search_query: str | None = None,
                 conversation_id: str | None = None) -> dict:
     request = (request or "").strip()
@@ -43,7 +43,7 @@ def start_draft(session: dict, project_id: str, request: str, search_query: str 
             "context": brief_mod.context_block(entries)}
 
 
-@traceable(name="promptforge.save_brief")
+@traceable(name="promptforge.save_brief", process_inputs=lambda _: {}, process_outputs=lambda _: {})
 def save_brief(session: dict, run_id: str, payload: dict) -> dict:
     run = runs.get(session, run_id)
     if run["status"] in ("exported", "reviewed"):
@@ -68,10 +68,11 @@ def edit_brief(session: dict, run_id: str, brief: dict) -> dict:
     checked = brief_mod.validate_citations(brief, run["provenance"])
     blocking = [q for q in checked["open_questions"] if q.get("blocking") and not q.get("answer")]
     return runs.update(session, run_id, {"brief": checked, "edited_by": session["user_id"],
-                                         "status": "needs_answers" if blocking else "draft"})
+                                         "status": "needs_answers" if blocking else "draft",
+                                         "brief_revision": run.get("brief_revision", 0) + 1, "artifact": None})
 
 
-@traceable(name="promptforge.export")
+@traceable(name="promptforge.export", process_inputs=lambda _: {}, process_outputs=lambda _: {})
 def export(session: dict, run_id: str) -> str:
     """Recheck cited memory, then hand out the Markdown brief (for Claude Code or any coding tool)."""
     run = runs.get(session, run_id)
@@ -80,6 +81,9 @@ def export(session: dict, run_id: str) -> str:
     blocking = [q["text"] for q in run["brief"]["open_questions"] if q.get("blocking") and not q.get("answer")]
     if blocking:
         raise Conflict("resolve blocking questions before exporting", {"blocking_questions": blocking})
+    uncited = [i["text"] for section in ("requirements", "current_decisions", "implementation_context", "preferences") for i in run["brief"].get(section, []) if not i.get("sources")]
+    if uncited or run["brief"].get("citation_warnings"):
+        raise Conflict("Resolve missing or invalid citations before export", {"uncited": uncited})
     changes = recheck(session, run)
     if changes:
         runs.update(session, run_id, {"status": "stale", "stale_reason": "cited context changed", "changes": changes})
@@ -92,7 +96,7 @@ def export(session: dict, run_id: str) -> str:
     return brief_mod.to_markdown(run)
 
 
-@traceable(name="promptforge.record_outcome")
+@traceable(name="promptforge.record_outcome", process_inputs=lambda _: {}, process_outputs=lambda _: {})
 def record_outcome(session: dict, run_id: str, results: list[dict], tool: str | None = None,
                    notes: str | None = None) -> dict:
     """User-reported validation of the externally built result. Unreported checks stay not_run."""
@@ -112,7 +116,7 @@ def record_outcome(session: dict, run_id: str, results: list[dict], tool: str | 
                                                      "at": now()}})
 
 
-@traceable(name="promptforge.feedback")
+@traceable(name="promptforge.feedback", process_inputs=lambda _: {}, process_outputs=lambda _: {})
 def feedback(session: dict, run_id: str, text: str, lesson_text: str | None,
              task_tags: list[str] | None = None, conflict_keys: list[str] | None = None) -> dict:
     """Store feedback; if a reusable lesson was stated, propose it (never approve here)."""

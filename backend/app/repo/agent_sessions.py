@@ -35,6 +35,11 @@ def resolve(token: str | None) -> dict:
     row = get_db().agent_sessions.find_one({"token_hash": _hash(token)})
     if not row or row["expires_at"] < now():
         raise NotLoggedIn("agent session expired; start a new conversation")
+    from app.repo import users
+    u = users.get(row["session"]["user_id"])
+    if row["project_id"] not in u.get("project_ids", []) or u["team_id"] != row["session"]["team_id"]:
+        raise NotLoggedIn("membership changed; start a new session")
+    row["session"] = {"user_id": u["_id"], "team_id": u["team_id"], "project_ids": u["project_ids"], "role": u["role"], "name": u.get("name", u["_id"])}
     return row
 
 

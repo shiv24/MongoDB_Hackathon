@@ -8,7 +8,7 @@ Review and export the brief to your coding tool, or run it with a selected model
 
 **Hackathon track:** Memory You Can Govern · MongoDB Agents in Context · Toronto, November 14, 2026.
 
-> **Status:** Early prototype scaffold. This README defines the current product direction and intended experience; the complete workflow is not implemented yet. Website generation is a candidate first workflow, and the final demo is still to be chosen. See [implementation status](#implementation-status) before running the project.
+> **Status:** Hackathon prototype. This README defines the current product direction and intended experience; direct and conversational workflows are implemented; live provider verification is pending. Website generation is a candidate first workflow, and the final demo is still to be chosen. See [implementation and limits](#implementation-and-limits) before running the project.
 
 ## The problem
 
@@ -120,7 +120,7 @@ The brief should remain usable without an execution integration. Running it insi
 
 ## Hackathon scope
 
-The product direction is settled: **shared team context plus approved learning, with both brief export and model execution.** The demo scenario and final output format remain open. Website generation is the leading candidate because its result can be inspected quickly.
+The product direction is settled: **shared team context plus approved learning, with both brief export and model execution.** The implemented output is an optional HTML/CSS website preview; Markdown export supports external coding workflows.
 
 ### First complete workflow
 
@@ -153,118 +153,86 @@ Use a requirement or distinctive project preference with a concrete check. Do no
 
 We will report requirement satisfaction, retained constraints, user corrections, time to a reviewable result, and validation outcomes. Any token or latency comparison must state its baseline. Fixtures and prerecorded fallback runs must be identified as such.
 
-## Planned architecture
+## Run locally
 
-```mermaid
-flowchart TD
-    U[Spoken or typed request] --> R[Resolve project and intent]
-    A[(MongoDB Atlas: sources, decisions, preferences)] --> S[Authorized retrieval and current-version checks]
-    R --> S
-    S --> B[Assemble cited brief]
-    B --> V[User reviews and resolves questions]
-    V --> E[Export to another tool]
-    V --> G[Run with a configured model]
-    G --> O[Artifact and validation evidence]
-    E --> F[User feedback]
-    O --> F
-    F --> L[Suggest a lesson and scope]
-    L --> P[User approval]
-    P --> A
-    B --> H[(Atlas: run history and memory events)]
-    O --> H
-    P --> H
-```
-
-The prototype uses only **MongoDB Atlas** and the event's partner resources: an **ElevenLabs agent** (voice or text) is the only LLM and writes the brief, reaching Atlas solely through PromptForge's governed API as webhook tools; **Voyage AI** provides embeddings and reranking; **LangSmith** traces retrieval and each agent tool step. FastAPI serves the API and a plain HTML/JavaScript frontend. Secrets stay on the server. The brief is exported as Markdown to the user's coding tool, such as Claude Code.
-
-### Planned records
-
-| Record | Purpose |
-| --- | --- |
-| Identity and membership | Establish who may read, execute, approve, and publish at each scope |
-| Sources and decisions | Preserve project context, provenance, current revisions, and supersession |
-| Lessons | Store proposed or approved preferences with scope, evidence, status, and expiry |
-| Runs | Record the request, assembled brief, context revisions, model, artifact, and check results |
-| Feedback | Preserve the user's observation and any lesson it proposed |
-| Memory events | Explain approvals, corrections, scope changes, retirement, and forgetting without retaining content that must be erased |
-
-The collections are `users`, `projects`, `sources`, `decisions`, `lessons`, `runs`, `feedback` and `memory_events`. See [docs/DESIGN.md](docs/DESIGN.md#data-model).
-
-## Implementation status
-
-**Workflow implemented and tested offline; not yet verified against the Atlas Sandbox, ElevenLabs, Voyage or LangSmith.** Follow [Local development](#local-development) to verify.
-
-| Area | Current state |
-| --- | --- |
-| Request | A conversation with the ElevenLabs agent, by voice or typed (text-only mode). The agent asks one clarifying question when two documents or features fit |
-| Agent ↔ Atlas | Five webhook tools: `get_project_context`, `save_brief`, `record_feedback`, `approve_lesson`, `reject_lesson`. Each call carries a short-lived session token passed as a `secret__` dynamic variable, which ElevenLabs never sends to the LLM; identity, team and project come from that token, never from the model |
-| Context | Scoped `$vectorSearch` (Voyage embeddings) over source chunks, current decisions and approved lessons; source chunks reranked with Voyage rerank; hits re-checked against the collections because search indexes sync asynchronously |
-| Brief | Written by the agent with `[S1]`-style citations; unknown citations dropped and uncited items flagged; shown live on screen; editable; blocking questions must be resolved before export |
-| Export | Cited memory rechecked first (stale → refused with the change shown); Markdown with a provenance list, downloaded and copied for Claude Code or any coding tool |
-| Result | The user records which acceptance checks the externally built result meets; unmarked checks stay "not run" |
-| Learning | Feedback (spoken to the agent or typed) becomes a proposed lesson with duplicate and conflict hints; approval at personal, project or team scope is a separate, explicit step (team needs publisher/admin) |
-| Governance | Revisions and supersession, retire, forget (marks citing runs stale, logs without text), expiry sweep before reads with TTL purge later, append-only `memory_events` with a JSON Schema validator |
-| Tracing | LangSmith traces for context gathering, Voyage calls, and each pipeline step when `LANGSMITH_TRACING=true` |
-| Tests | 24 offline tests (scope filters, lifecycle, brief parsing, full agent-tool HTTP flow with external calls stubbed); 3 live Atlas tests that run once `.env` is configured and fixtures are seeded |
-
-Not implemented: running the brief with a model inside PromptForge (no partner credit covers generation; the brief is exported instead), live document or repository connectors, automated validation of results, and a complete erasure workflow.
-
-[docs/DESIGN.md](docs/DESIGN.md) maps this README to the data model, API and modules. The earlier website-voting design is archived in [docs/archive/](docs/archive/website-voting-design.md).
-
-### Repository layout
-
-```text
-backend/
-  app/main.py          FastAPI application (API under /api, frontend at /)
-  app/routes/          UI endpoints, voice session, and agent_tools.py (ElevenLabs webhook tools)
-  app/agent/           Pipeline: retrieval (Voyage), brief parsing/export, memory recheck
-  app/repo/            Scope filters and scoped data access (the only path to Atlas)
-  tests/               Offline tests and live Atlas isolation tests
-frontend/              Conversation → brief → export → result → feedback, with a project-context sidebar
-scripts/               Atlas setup, ElevenLabs agent setup, seeding, and demo fixtures
-docs/                  Technical design; archive/ holds the earlier prototype design
-skills/                Repository-specific development instructions
-```
-
-### Local development
-
-From the repository root:
+Python 3.10+ is required. From the repository root:
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r backend/requirements.txt
-cp .env.example .env                    # MONGODB_URI (Atlas Sandbox), VOYAGE_API_KEY, ELEVENLABS_API_KEY, LANGSMITH_API_KEY
-python scripts/setup_atlas.py           # collections, validator, indexes, 3 Vector Search indexes, TTL
-python scripts/seed.py --reset          # demo fixtures (embedded with Voyage)
-uvicorn app.main:app --reload --app-dir backend
-cloudflared tunnel --url http://localhost:8000   # in another terminal; put the https URL in PUBLIC_BASE_URL
-python scripts/setup_elevenlabs_agent.py         # creates the agent + tools; put ELEVENLABS_AGENT_ID in .env, restart uvicorn
-# open http://localhost:8000, choose a demo user, and start talking
+python scripts/init_env.py
 ```
 
-ElevenLabs calls the tools over the public tunnel URL, so the tunnel must stay up during the demo; re-run the agent setup if its URL changes. For the hackathon, provision the cluster through the supplied Atlas Sandbox invitation.
+Edit `.env` locally. Required for direct briefs and previews: `MONGODB_URI` (the event sandbox), `VOYAGE_API_KEY` (direct Voyage account), and `OPENAI_API_KEY`. Default brief and generation model: `gpt-4.1-mini`; override with `OPENAI_BRIEF_MODEL` and `OPENAI_GENERATION_MODEL` if your project supports another Responses structured-output model.
+
+Add `ELEVENLABS_API_KEY` for microphone dictation. `ELEVENLABS_STT_MODEL` defaults to `scribe_v2`. Enable LangSmith only after setting `LANGSMITH_API_KEY` and `LANGSMITH_TRACING=true`. Traces omit operation inputs/outputs to avoid copying personal context; usage is recorded on runs/artifacts.
 
 ```bash
-pytest backend/tests                    # offline tests; live Atlas tests run when .env is set and fixtures are seeded
+python scripts/doctor.py
+python scripts/doctor.py --live
+python scripts/setup_atlas.py
+python scripts/seed.py
+uvicorn app.main:app --reload --app-dir backend
 ```
 
-## Team ownership
+Open http://localhost:8000. Choose Alice and a project, type a request, and click **Build brief**. Resolve blocking questions, then export or generate a website preview. Record outcomes and approve suggested lessons explicitly.
 
-| Workstream | Owns |
-| --- | --- |
-| Context and memory | Atlas Sandbox, source records, retrieval, access scopes, approval, correction, and expiry |
-| Brief and execution | Intent resolution, cited brief assembly, export, one model adapter, and result evidence |
-| Product experience | Request input, context inspection, brief review, result display, and scoped feedback |
-| Verification and demo | Curated fixtures, acceptance checks, isolation verification, demo scenario, and submission |
+`doctor --live` tests connectivity and model access; its Voyage embedding probe consumes a small number of tokens. It does not prove the full workflow. Setup must finish with all three vector indexes READY. Allow time for freshly seeded data to be indexed. Atlas also needs your client IP allowed and a database user with appropriate permissions.
 
-## Hackathon submission
+Seeding an existing database stops rather than overwriting it. `python scripts/seed.py --reset` deliberately deletes the demo database's application records. Use only when you intend to reset demo data.
 
-The event requires the supplied **MongoDB Atlas Hackathon Sandbox** for finalist eligibility, a **public repository**, a **one-minute demo video**, and a concise project description. The demo must clearly identify the functionality built during the event. Submissions close at **5:00 PM Toronto time on November 14, 2026**.
+### Optional ElevenLabs live conversation
 
-Before submission, replace the prototype status with verified capabilities, identify the team's original contributions and third-party dependencies, confirm video playback and demo access, and include every team member. The current scaffold is not a completed submission.
+The direct workflow and dictation need no tunnel. For full back-and-forth conversation:
 
-See the [official event resource guide](https://docs.google.com/document/d/1rrsNKU3guyvExg_oBPpfOrZF9Ypr5xPLFQ9yYJ2C60o/edit).
+```bash
+cloudflared tunnel --url http://localhost:8000
+```
+
+Put the HTTPS URL in `PUBLIC_BASE_URL`, then run:
+
+```bash
+python scripts/setup_elevenlabs_agent.py
+```
+
+Put the printed ID in `ELEVENLABS_AGENT_ID` and restart the app. Click **Live voice conversation**. The agent retrieves context and saves briefs through scoped webhook tools. It can propose a lesson; the user must click **review proposal → Approve lesson** in the app. It cannot approve via its webhook.
+
+Keep the tunnel running. If the URL changes, rerun setup (it creates new agent/tools) and update the ID. ElevenLabs agent/model usage has its own billing; verify event-coupon coverage in your account. No free-generation guarantee is made.
+
+## Implementation and limits
+
+- Both ElevenLabs conversation and direct OpenAI briefs use Atlas context and the same export checks.
+- Voyage embeds and reranks context. The backend controls scope, current status, expiry, and permissions.
+- Runs are private to their creator, including derived personal context. Shared lessons remain available according to their approved scope.
+- Expired, retired, superseded, removed, or unauthorized cited memory blocks export/generation. Uncited requirements and invalid citations block export. Citation validation verifies references, not semantic truth.
+- OpenAI returns typed structured output. Requests have bounded output/context, timeouts, and no automatic OpenAI retries. Preview generation is locked per run, cached per brief revision, and rechecks memory after generation.
+- Website output is an HTML/CSS visual prototype. It is sanitized and rendered with an empty iframe sandbox plus a restrictive CSP. Scripts, external assets, network calls, and form submission are disabled. Backend features are not implemented by this preview.
+- Checks are user-reported. There is no claim of automatic functional correctness or complete erasure of previously exported content.
+- The demo login picker is simulated identity, not production authentication. Use synthetic demo data; replace demo login before real-team/public production use.
+- LangSmith tracing is optional. OpenAI usage is stored with model results; dollar spend depends on your configured models. Set provider-side spending limits for your budget.
+
+## Verification
+
+```bash
+# Explicitly disable live credentials for the offline suite:
+MONGODB_URI='' VOYAGE_API_KEY='' LANGSMITH_TRACING=false pytest backend/tests -q
+node --check frontend/app.js
+# After configuring and seeding the sandbox:
+pytest backend/tests/test_isolation.py -q
+```
+
+Current offline result: **34 passed, 3 live Atlas tests skipped**. Browser automation was unavailable during this verification; perform the manual workflow below after setup.
+
+Offline tests cover API flow, scopes, lifecycle, private runs, stale/expired memory, explicit approval boundaries, direct generation with mocked providers, preview caching and sanitization. Live provider calls and real browser microphone/agent behavior still require credentials and a live smoke test.
+
+## Demo acceptance
+
+1. Alice requests a signup page, answers the missing company-size question, and inspects source citations.
+2. Export or generate a preview and record what actually meets the checks.
+3. Propose and approve a project lesson; Bob's fresh request includes it. Alice's personal lessons stay private.
+4. Correct a decision; the old brief is blocked until refreshed.
+5. Switch to Orbit and verify its context stays isolated.
 
 ## License
 

@@ -62,8 +62,8 @@ def _confirm_current(session: dict, hits: list[dict]) -> list[dict]:
         return hits
     live = {d["_id"]: d for d in get_db().lessons.find({"_id": {"$in": [h["_id"] for h in hits]}},
                                                        {"embedding": 0})}
-    return [h for h in hits if h["_id"] in live and live[h["_id"]]["status"] == "approved"
-            and _visible(session, live[h["_id"]])]
+    return [{**live[h["_id"]], "score": h["score"]} for h in hits if h["_id"] in live and live[h["_id"]]["status"] == "approved"
+            and _visible(session, live[h["_id"]]) and live[h["_id"]].get("expires_at", now()) > now()]
 
 
 def list_for(session: dict, project_id: str, status: str | None = None) -> list[dict]:
@@ -79,6 +79,7 @@ def list_for(session: dict, project_id: str, status: str | None = None) -> list[
 
 
 def similar_approved(session: dict, project_id: str, query_embedding: list[float], limit: int = 5) -> list[dict]:
+    expire_due(session["team_id"])
     return _confirm_current(session, vector_search(get_db().lessons, "lessons_vector", query_embedding,
                                                    scope.lesson_filter(session, project_id), limit))
 
@@ -86,6 +87,9 @@ def similar_approved(session: dict, project_id: str, query_embedding: list[float
 def current_state(session: dict, lesson_id: str) -> dict | None:
     """Pre-execution recheck: current status/revision, or None if gone or no longer visible."""
     doc = get_db().lessons.find_one({"_id": lesson_id}, {"embedding": 0})
+    if doc and doc.get("expires_at") and doc["expires_at"] <= now():
+        expire_due(session["team_id"])
+        doc = get_db().lessons.find_one({"_id": lesson_id}, {"embedding": 0})
     if not _visible(session, doc):
         return None
     return doc
@@ -195,7 +199,7 @@ def forget(session: dict, lesson_id: str) -> dict:
 def mark_used(lesson_ids: list[str]) -> None:
     """Citing a lesson in an exported brief keeps it fresh."""
     if lesson_ids:
-        get_db().lessons.update_many({"_id": {"$in": lesson_ids}, "status": "approved"},
+        get_db().lessons.update_many({"_id": {"$in": lesson_ids}, "status": "approved", "expires_at": {"$gt": now()}},
                                      {"$set": {"last_used_at": now(), **_expiry()}})
 
 

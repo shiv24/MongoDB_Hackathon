@@ -1,4 +1,4 @@
-"""Settings and constants. Stack: MongoDB Atlas + partner resources (ElevenLabs, Voyage AI, LangSmith)."""
+"""Settings and constants. Stack: Atlas, Voyage, ElevenLabs, OpenAI and LangSmith."""
 import os
 
 from dotenv import load_dotenv
@@ -15,10 +15,10 @@ EMBED_MODEL = os.environ.get("EMBED_MODEL", "voyage-3.5")
 EMBED_DIMS = int(os.environ.get("EMBED_DIMS", "1024"))
 RERANK_MODEL = os.environ.get("RERANK_MODEL", "rerank-2.5")
 
-# ElevenLabs Agents: the conversational agent and the only LLM in the stack
+# ElevenLabs Agents: optional conversational request path
 ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY", "")
 ELEVENLABS_AGENT_ID = os.environ.get("ELEVENLABS_AGENT_ID", "")
-ELEVENLABS_AGENT_LLM = os.environ.get("ELEVENLABS_AGENT_LLM", "claude-sonnet-5-5")  # runs inside ElevenLabs, on ElevenLabs credits
+ELEVENLABS_AGENT_LLM = os.environ.get("ELEVENLABS_AGENT_LLM", "claude-sonnet-5-5")  # runs inside ElevenLabs; verify account billing
 ELEVENLABS_VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "")
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")  # public https URL ElevenLabs can reach (tunnel)
 AGENT_TOOL_SECRET = os.environ.get("AGENT_TOOL_SECRET", "")  # shared header value sent on every agent tool call
@@ -41,3 +41,8 @@ CHUNK_CHARS = 1200               # source chunk size
 DUPLICATE_SCORE = 0.92           # vectorSearchScore (cosine, normalised 0..1) at or above -> duplicate
 EXPIRY_DAYS = 30                 # approved lesson not cited this long -> expired by the sweep
 PURGE_GRACE_DAYS = 7             # TTL index on purge_at = expires_at + this
+
+OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
+OPENAI_BRIEF_MODEL = os.environ.get('OPENAI_BRIEF_MODEL') or 'gpt-4.1-mini'
+OPENAI_GENERATION_MODEL = os.environ.get('OPENAI_GENERATION_MODEL') or 'gpt-4.1-mini'
+ELEVENLABS_STT_MODEL = os.environ.get('ELEVENLABS_STT_MODEL') or 'scribe_v2'

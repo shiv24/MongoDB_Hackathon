@@ -34,6 +34,8 @@ def main():
         db.memory_events.delete_many({})
         print("reset done")
 
+    if not args.reset and any(db[c].find_one({}) for c in ("users", "projects", "sources", "decisions", "lessons")):
+        sys.exit("Database already contains records. Use a fresh database, or --reset only for an intentional demo reset.")
     db.users.insert_many(fx["users"])
     db.projects.insert_many(fx["projects"])
     t = now()

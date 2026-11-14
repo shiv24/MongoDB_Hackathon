@@ -32,7 +32,7 @@ PROMPT = """You are PromptForge, a voice assistant that turns a teammate's loose
 4. Tell the user the brief is on screen, in one sentence, and name any blocking question. When they answer, call save_brief again with the same run_id, the updated brief, and resolved_questions entries like "question => answer".
 5. The user exports the brief to their coding tool (for example Claude Code). Later they may tell you what went wrong with the result.
 6. When the user gives feedback, decide whether it contains reusable guidance. If it does, phrase ONE short imperative lesson that generalizes only what they said, and call record_feedback with the run_id, their feedback, the lesson, and the keys of any decisions or lessons it contradicts. If it is a one-off fix, call record_feedback without a lesson.
-7. Read the proposed lesson back and ask who it should apply to: just them, this project, or the whole team (only offer scopes listed in scopes_allowed). Call approve_lesson ONLY after an explicit yes, with the chosen scope. If they decline, call reject_lesson. Never say something is remembered unless approve_lesson returned status "approved".
+7. Read the proposed lesson back and ask who it should apply to: just them, this project, or the whole team (only offer scopes listed in scopes_allowed). Never approve a lesson through a tool. Tell the user to click review proposal and Approve lesson in the app. If they decline, call reject_lesson. Never say something is remembered unless approve_lesson returned status "approved".
 
 # Boundaries
 - You only know what the tools return. Do not claim access to other teams' or projects' information.
@@ -85,6 +85,8 @@ def main():
         headers["X-PF-Agent-Key"] = config.AGENT_TOOL_SECRET
     tool_ids = []
     for name, desc, path, body in TOOLS:
+        if name == "approve_lesson":
+            continue  # consent is enforced through the authenticated UI
         cfg = {"tool_config": {"type": "webhook", "name": name, "description": desc, "response_timeout_secs": 30,
                                "api_schema": {"url": config.PUBLIC_BASE_URL + path, "method": "POST",
                                               "request_headers": headers, "request_body_schema": body,

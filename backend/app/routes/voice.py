@@ -35,3 +35,21 @@ def current_run(request: Request, agent_session_id: str):
     s = current(request)
     row = agent_sessions.get_for_user(s, agent_session_id)
     return runs.get(s, row["current_run_id"]) if row["current_run_id"] else None
+
+from fastapi import UploadFile, File
+
+@router.post('/transcribe')
+async def transcribe(request: Request, audio: UploadFile = File(...)):
+    current(request)
+    if not config.ELEVENLABS_API_KEY:
+        raise RuntimeError('Set ELEVENLABS_API_KEY for microphone transcription. Typed requests remain available.')
+    content = await audio.read(10 * 1024 * 1024 + 1)
+    if not content or len(content) > 10 * 1024 * 1024:
+        raise ValueError('Audio must be between 1 byte and 10 MB.')
+    async with httpx.AsyncClient(timeout=45) as client:
+        try:
+            response = await client.post('https://api.elevenlabs.io/v1/speech-to-text', headers={'xi-api-key':config.ELEVENLABS_API_KEY}, data={'model_id':config.ELEVENLABS_STT_MODEL}, files={'file':(audio.filename or 'recording.webm', content, audio.content_type or 'audio/webm')})
+            response.raise_for_status()
+        except httpx.HTTPError:
+            raise RuntimeError('ElevenLabs transcription failed. Check key, quota and connection, or type your request.') from None
+    return {'text':response.json()['text']}
