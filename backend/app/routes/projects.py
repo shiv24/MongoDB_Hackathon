@@ -2,7 +2,7 @@ from io import BytesIO
 from pathlib import Path
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from pypdf import PdfReader
 
 from app import config
@@ -20,7 +20,14 @@ class SourceIn(BaseModel):
 
 
 class DecisionIn(BaseModel):
-    text: str
+    text: str = Field(min_length=1, max_length=4000)
+
+    @field_validator('text')
+    @classmethod
+    def nonempty(cls, value):
+        if not value.strip():
+            raise ValueError('Write a nonempty project rule')
+        return value.strip()
 
 
 @router.get("")

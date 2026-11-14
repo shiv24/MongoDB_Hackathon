@@ -127,3 +127,12 @@ def test_decision_requirement_keeps_evidence():
     result = ground_direct_payload(draft, {'D1'})
     assert result['requirements'] == ['Do not collect phone numbers [D1]']
     assert result['assumptions'] == []
+
+
+def test_project_rule_rejects_blank_text():
+    import pytest
+    from pydantic import ValidationError
+    from app.routes.projects import DecisionIn
+    with pytest.raises(ValidationError):
+        DecisionIn(text='   ')
+    assert DecisionIn(text='  Preserve tenant boundaries.  ').text == 'Preserve tenant boundaries.'

@@ -22,7 +22,7 @@
         <p class="hint">Start with the idea. Your team’s context supplies the details.</p>
         <div class="row">
           <button id="talk-btn" type="button">🎙 Record request</button>
-          <button id="type-btn" class="secondary" type="button">Type instead</button>
+
         </div>
         <div id="type-row" class="row">
           <textarea id="type-input" rows="3" aria-label="Your request" placeholder="Build the signup page. Follow what our team decided."></textarea>
@@ -39,7 +39,7 @@
             <button id="save-brief-btn" class="secondary hidden" type="button">Save edits</button>
             <span class="spacer"></span>
             <button id="generate-btn" type="button">Generate website preview</button>
-            <button id="export-btn" type="button">Copy & download prompt</button>
+            <button id="export-btn" type="button">Export prompt</button>
           </div>
           <div id="handoff" class="callout hidden">
             <strong>Prompt exported.</strong> It was downloaded as <code>promptforge-brief.md</code> (clipboard copying is attempted too). In your project folder, run:
@@ -49,7 +49,7 @@
       </section>
       <!-- 2. Artifact first; the grounded build prompt remains available below. -->
       <section class="card hidden" id="preview-card">
-        <h2><span class="step">2</span> Built artifact <span id="preview-status" class="muted" role="status"></span></h2>
+        <h2><span class="step">2</span> Website preview <span id="preview-status" class="muted" role="status"></span></h2>
         <iframe id="preview-frame" title="Generated artifact preview" sandbox="" referrerpolicy="no-referrer" style="width:100%;height:600px;border:1px solid #ddd"></iframe>
       </section>
 
@@ -58,7 +58,7 @@
         <h2><span class="step">3</span> Feedback</h2>
         <p class="hint">What should your team never have to explain again? Add a note, then rate the result.</p>
         <textarea id="feedback-text" rows="3" placeholder="What worked, or what should change?"></textarea>
-        <div class="feedback-actions" role="group" aria-label="Rate this artifact">
+        <div class="feedback-actions" role="group" aria-label="Rate this prompt">
           <button id="feedback-up" class="feedback-rating" type="button" aria-label="Thumbs up" aria-pressed="false"><span aria-hidden="true">👍</span><span>Looks good</span></button>
           <button id="feedback-down" class="feedback-rating" type="button" aria-label="Thumbs down" aria-pressed="false"><span aria-hidden="true">👎</span><span>Needs work</span></button>
           <span id="feedback-status" class="muted" role="status"></span>
@@ -71,7 +71,7 @@
       <section class="card">
         <h2>The shared brain</h2>
         <p class="hint">Scoped to your team and project. Highlighted items shaped the current brief.</p>
-        <h3>Sources</h3>
+        <button id="brain-open" class="secondary" type="button">Explore shared brain</button><p id="brain-count" class="hint"></p><h3>Sources</h3>
         <ul id="sources" class="items"></ul>
         <details>
           <summary>Add a source</summary>
@@ -85,6 +85,13 @@
     </aside>
   </div>
 
+  <dialog id="brain-dialog" aria-labelledby="brain-title">
+    <div class="row"><div><div class="eyebrow">YOUR PROJECT’S MEMORY</div><h2 id="brain-title">The shared brain</h2></div><span class="spacer"></span><button id="brain-close" class="secondary" type="button">Close</button></div>
+    <p class="hint">Explore the decisions and lessons available to your prompts. Only current decisions and approved, unexpired lessons can guide new work.</p>
+    <label for="brain-search">Find a decision or lesson</label><input id="brain-search" type="search" placeholder="Search memory…">
+    <div id="brain-entries"></div>
+    <details><summary>Add a project rule</summary><p class="hint">Save an explicit team decision. It can guide future relevant requests.</p><textarea id="rule-text" rows="3" placeholder="For this project, …"></textarea><button id="rule-save" type="button">Save project rule</button></details>
+  </dialog>
   <div id="toast" class="toast hidden" role="status"></div>
   <script type="module" src="app.js"></script>
 </body>

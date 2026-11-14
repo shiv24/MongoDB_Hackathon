@@ -69,7 +69,7 @@ async function submitRequest(clarification = '') {
 function tell(text) { busy($('send-btn'), 'Updating…', () => submitRequest(text)); }
 $('send-btn').addEventListener('click', e => busy(e.target, 'Forging prompt…', () => submitRequest()));
 $('type-input').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('send-btn').click(); });
-$('type-btn').addEventListener('click', () => $('type-input').focus());
+
 $('talk-btn').addEventListener('click', async () => {
   try {
     if (recording && recording.state === 'recording') { recording.stop(); return; }
@@ -87,7 +87,7 @@ $('talk-btn').addEventListener('click', async () => {
         const response=await fetch('/api/voice/transcribe',{method:'POST',body:form});
         const result=await response.json();
         if(!response.ok) throw new Error(result.error || 'Transcription failed');
-        $('type-input').value=result.text; toast('Review the transcript, then build the artifact.');
+        $('type-input').value=result.text; toast('Review the transcript, then forge your prompt.');
       } catch(e) { toast(e.message); }
     };
     recording.start(); $('talk-btn').textContent='Stop recording';
@@ -97,6 +97,7 @@ $('talk-btn').addEventListener('click', async () => {
 async function generatePreview() {
   if (!state.run?._id || state.previewing) return;
   state.previewing = true;
+  $('send-btn').disabled = true;
   renderRun();
   try {
     state.run = await api(`/build/${state.run._id}/preview`, { method: 'POST' });
@@ -105,6 +106,7 @@ async function generatePreview() {
     toast(`Preview could not be generated: ${err.message}`);
   } finally {
     state.previewing = false;
+    $('send-btn').disabled = false;
     renderRun();
   }
 }
@@ -129,6 +131,8 @@ function usedIds() {
 function renderContext() {
   const c = state.context; if (!c) return;
   const used = usedIds();
+  $('brain-count').textContent = `${c.sources.length} sources · ${c.decisions.filter(d => d.status === 'current').length} decisions · ${c.lessons.filter(l => l.status === 'approved').length} approved lessons`;
+  renderBrain();
   $("sources").replaceChildren(...c.sources.map((s) => el("li", { class: used.has(s.source_id) ? "used" : "" },
     el("span", { class: "text" }, s.title), el("span", { class: "meta" }, `${s.kind} · revision ${s.revision} · added by ${s.added_by}`))));
   if (!c.sources.length) $("sources").append(el("li", { class: "muted" }, "No sources yet."));
@@ -154,6 +158,30 @@ $("src-btn").addEventListener("click", (e) => busy(e.target, "Adding…", async 
   await loadContext();
   toast("Source added to project context.");
 }));
+// ---------- inspect and maintain project memory ----------
+function renderBrain() {
+  const c = state.context; if (!c) return;
+  const query = $('brain-search').value.trim().toLowerCase();
+  const root = $('brain-entries'); root.replaceChildren();
+  for (const [title, records] of [['Decisions', c.decisions], ['Lessons', c.lessons]]) {
+    const matches = records.filter(r => `${r.text} ${r.scope || ''} ${r.status}`.toLowerCase().includes(query));
+    root.append(el('h3', {}, title));
+    if (!matches.length) root.append(el('p', {class:'hint'}, query ? 'No matches.' : `No ${title.toLowerCase()} yet.`));
+    for (const r of matches) root.append(el('article', {class:'memory-entry'},
+      el('div', {class:'row'}, chip(r.status), el('span', {class:'muted'}, `${r.scope || 'project'} · ${r.owner_id || 'team'} · revision ${r.revision}`)),
+      el('p', {}, r.text)));
+  }
+}
+$('brain-open').addEventListener('click', () => { renderBrain(); $('brain-dialog').showModal(); });
+$('brain-close').addEventListener('click', () => $('brain-dialog').close());
+$('brain-search').addEventListener('input', renderBrain);
+$('rule-save').addEventListener('click', e => busy(e.currentTarget, 'Saving…', async () => {
+  const text = $('rule-text').value.trim();
+  if (!text) throw new Error('Write the project rule first.');
+  await api(`/projects/${state.projectId}/decisions`, {method:'POST', body:{text}});
+  $('rule-text').value = ''; await loadContext();
+  toast('Project rule saved. It will become searchable after indexing.');
+}));
 // ---------- brief ----------
 const SECTIONS = [["requirements", "Requirements"], ["current_decisions", "Current decisions"], ["implementation_context", "Implementation context"],
   ["preferences", "Preferences"], ["acceptance_checks", "Acceptance checks"]];
@@ -173,7 +201,7 @@ function renderRun() {
   show("brief-card", hasBrief);
   const hasPreview = !!r?.artifact && r.artifact.brief_revision === r.brief_revision && r.status !== 'stale';
   show("feedback-card", hasBrief);
-  if (hasPreview && state.feedbackRunId !== r._id) {
+  if (hasBrief && state.feedbackRunId !== r._id) {
     state.feedbackRunId = r._id;
     $("feedback-text").value = "";
     $("feedback-up").setAttribute("aria-pressed", "false");
@@ -299,7 +327,7 @@ function renderFeedbackLesson(result) {
         const scope = scopePicker.value;
         await api(`/lessons/${lesson._id}/approve`, { method: "POST", body: { scope, text: text.value.trim() } });
         box.replaceChildren();
-        $("feedback-status").textContent = scope === "project" ? "Lesson saved for this project." : "Lesson saved for you.";
+        $("feedback-status").textContent = ({project:"Lesson saved for this project.",team:"Lesson saved for your team.",personal:"Lesson saved for you."})[scope];
         await loadContext();
       }) }, "Save lesson"))));
 }
