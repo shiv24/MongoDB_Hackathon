@@ -406,14 +406,29 @@ $("export-btn").addEventListener("click", (e) => busy(e.target, "Rechecking memo
 }));
 
 // ---------- simple artifact feedback ----------
+$('feedback-example').addEventListener('click', () => $('lesson-example').click());
 async function submitFeedback() {
+  show('feedback-error', false);
   const text = $('feedback-text').value.trim();
-  if (!text) throw new Error('Describe what the brain should remember first.');
-  const result = await api(`/runs/${state.run._id}/feedback`, {
-    method:'POST', body:{text, propose_lesson:true}
-  });
-  $('feedback-status').textContent = result.proposed ? 'Suggested only — review and approve below.' : 'Feedback saved. No reusable lesson was identified. Try describing a rule for future tasks.';
-  renderFeedbackLesson(result);
+  if (!text) {
+    $('feedback-error').textContent = 'Type your feedback in the box above first, or click Use example feedback. The gray example text is not submitted.';
+    show('feedback-error'); $('feedback-text').focus(); return;
+  }
+  if (!state.run?.brief) { $('feedback-error').textContent = 'Build a preview first.'; show('feedback-error'); return; }
+  const runId = state.run._id;
+  $('remember-rebuild').disabled = true; $('send-btn').disabled = true; $('session-user').disabled = true;
+  $('feedback-status').textContent = 'Reading your feedback and preparing a lesson…';
+  progress('Turning your feedback into a reusable lesson');
+  try {
+    const result = await api(`/runs/${runId}/feedback`, {method:'POST', body:{text, propose_lesson:true}});
+    $('feedback-status').textContent = result.proposed ? 'Lesson ready below. Review it, choose who should remember it, then approve.' : 'Feedback saved, but no reusable lesson was identified. Describe a rule for future requests, or use Save feedback & rebuild to save your exact wording.';
+    renderFeedbackLesson(result);
+    if (result.proposed) $('feedback-lesson').scrollIntoView({behavior:'smooth',block:'center'});
+  } catch (err) {
+    $('feedback-status').textContent = 'Lesson could not be prepared.';
+    $('feedback-error').textContent = err.message + ' Your feedback is still in the box. You can retry.';
+    show('feedback-error');
+  } finally { stopProgress(); $('remember-rebuild').disabled = false; $('send-btn').disabled = false; $('session-user').disabled = false; }
 }
 $('remember-rebuild').addEventListener('click', e => busy(e.currentTarget, 'Remembering and rebuilding…', async () => {
   const text = $('feedback-text').value.trim();
@@ -450,6 +465,7 @@ function renderFeedbackLesson(result) {
     ...(result.scopes_allowed || ['personal']).map(s => el('option', {value:s}, {personal:'Just me',project:'This project',team:'Whole team'}[s])));
   const text = el("textarea", { rows: 2, "aria-label": "Suggested lesson" });
   text.value = lesson.text;
+  if ((result.scopes_allowed || []).includes($('feedback-scope').value)) scopePicker.value = $('feedback-scope').value;
   box.append(el("div", { class: "generated-lesson" },
     el("strong", {}, "Suggested lesson"),
     el("p", { class: "hint" }, "Not active yet. Review the wording and choose who should benefit."),
