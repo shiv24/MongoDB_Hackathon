@@ -12,7 +12,7 @@ from app.errors import Conflict
 router = APIRouter(prefix='/build')
 
 GROUNDED_SECTIONS = {
-    'requirements': {'S', 'D', 'U'},
+    'requirements': {'S', 'D', 'L', 'U'},
     'current_decisions': {'D'},
     'implementation_context': {'S', 'D'},
     'preferences': {'L'},

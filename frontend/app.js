@@ -5,7 +5,7 @@
 const $ = (id) => document.getElementById(id);
 const DEFAULT_USER_ID = "console-alice";
 const DEFAULT_PROJECT_ID = "admin-console";
-const state = { me: null, projectId: null, run: null, context: null, previewing: false, feedbackRunId: null };
+const state = { me: null, projectId: null, run: null, context: null, previewing: false, feedbackRunId: null, baseline: null };
 
 // ---------- helpers ----------
 async function api(path, opts = {}) {
@@ -53,9 +53,15 @@ async function init() {
   state.projectId = project._id;
   $("active-context").textContent = `${state.me.name} · ${project.name}`;
   await loadContext();
-  const saved = location.hash.match(/^#run=([a-f0-9]+)$/);
+  const params = new URLSearchParams(location.hash.slice(1));
+  const beforeId = params.get('before') || sessionStorage.getItem(`pf-before-${state.me.user_id}`);
+  if (beforeId && /^[a-f0-9]+$/.test(beforeId)) {
+    try { state.baseline = await api(`/runs/${beforeId}`); }
+    catch { state.baseline = null; sessionStorage.removeItem(`pf-before-${state.me.user_id}`); }
+  }
+  const saved = location.hash.match(/^#run=([a-f0-9]+)(?:&before=[a-f0-9]+)?$/);
   if (saved) {
-    try { await openRun(saved[1]); }
+    try { await openRun(saved[1]); if (params.get('before') && state.baseline?.artifact && state.run?.artifact) $('compare-preview').click(); }
     catch (err) { if (err.status !== 404 && err.status !== 403) throw err; history.replaceState(null, '', location.pathname); toast('This prompt belongs to another workspace or teammate. Start a new request here.'); }
   }
 }
@@ -65,7 +71,7 @@ $('session-user').addEventListener('change', async e => {
   if (state.previewing || $('send-btn').disabled) { e.target.value = state.me.user_id; toast('Wait for the current request to finish.'); return; }
   try {
     await api('/logout', {method:'POST'});
-    state.run = null; state.context = null; state.feedbackRunId = null;
+    state.run = null; state.context = null; state.feedbackRunId = null; state.baseline = null;
     history.replaceState(null, '', location.pathname);
     sessionStorage.setItem('pf-console-user', next);
     $('type-input').value = ''; renderRun();
@@ -75,7 +81,7 @@ $('session-user').addEventListener('change', async e => {
 });
 $('lesson-example').addEventListener('click', () => {
   if (!state.run?.brief) { toast('Create a prompt first, then add feedback.'); return; }
-  $('feedback-text').value = 'We hit a bug on page 8: changing the search showed an empty table because the page stayed at 8. For every paginated table, reset to page 1 when search or filters change, preserve the sort, and add a regression test starting from a later page.';
+  $('feedback-text').value = 'For all searchable tables in this project, show a full-width pale amber banner directly above the results whenever search is active. Include the current search term, matching result count, and a clearly labeled Clear search button in that banner.';
   $('feedback-card').scrollIntoView({behavior:'smooth',block:'center'}); $('feedback-text').focus();
 });
 async function openRun(id) {
@@ -107,7 +113,7 @@ $('send-btn').addEventListener('click', e => busy(e.currentTarget, 'Creating…'
   catch (err) { $('request-error').textContent = err.message; show('request-error'); }
   finally { show('request-status', false); }
 }));
-$('demo-request').addEventListener('click', () => { $('type-input').value = state.me?.user_id === 'console-bob' ? 'Add search to the orders table.' : 'Add search to the users table.'; $('type-input').focus(); });
+$('demo-request').addEventListener('click', () => { $('type-input').value = state.me?.user_id === 'console-bob' ? 'Add search to the orders table.' : 'Add search to the users table. Show sample results for a search for Alex.'; $('type-input').focus(); });
 $('type-input').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('send-btn').click(); });
 
 $('talk-btn').addEventListener('click', async () => {
@@ -162,6 +168,25 @@ $('copy-btn').addEventListener('click', e => busy(e.currentTarget, 'Copying…',
     throw err;
   }
 }));
+$('pin-preview').addEventListener('click', () => {
+  if (!state.run?.artifact || state.previewing) return;
+  state.baseline = structuredClone(state.run); sessionStorage.setItem(`pf-before-${state.me.user_id}`, state.run._id); renderRun();
+  toast('Before version kept. Approve feedback, then rerun the same request.');
+});
+$('compare-close').addEventListener('click', () => $('compare-dialog').close());
+$('compare-preview').addEventListener('click', () => {
+  if (!state.baseline?.artifact || !state.run?.artifact) return;
+  const before = state.baseline, after = state.run;
+  $('before-frame').srcdoc = before.artifact.html;
+  $('after-frame').srcdoc = after.artifact.html;
+  $('compare-meta').textContent = `${before.request === after.request ? 'Same request' : 'Different requests'} · Before: ${before.artifact.model} · After: ${after.artifact.model}`;
+  const used = usedIds();
+  const beforeKeys = new Set(['requirements','current_decisions','implementation_context','preferences','acceptance_checks','open_questions'].flatMap(k => (before.brief[k] || []).flatMap(i => i.sources || [])));
+  const previousLessons = new Set((before.provenance || []).filter(e => e.type === 'lesson' && beforeKeys.has(e.key)).map(e => `${e.id}:${e.revision}`));
+  const learned = (after.provenance || []).filter(e => e.type === 'lesson' && used.has(e.id) && !previousLessons.has(`${e.id}:${e.revision}`));
+  $('compare-learning').textContent = learned.length ? 'New learned guidance: ' + learned.map(e => e.text).join(' ') : 'No newly cited lesson compared with the before version. Check approval, relevance and indexing before presenting this as a memory-driven change.';
+  $('compare-dialog').showModal();
+});
 $('generate-btn').addEventListener('click', e => busy(e.target, 'Generating preview…', generatePreview));
 
 // ---------- project context sidebar ----------
@@ -269,6 +294,9 @@ function renderRun() {
     $("feedback-lesson").replaceChildren();
   }
   show('preview-card', state.previewing || hasPreview);
+  $('pin-preview').disabled = !hasPreview || state.previewing;
+  $('compare-preview').disabled = !hasPreview || !state.baseline || state.baseline._id === r?._id;
+  $('baseline-status').textContent = state.baseline ? 'Before version kept for comparison.' : 'Keep the first version before teaching a lesson.';
   $('preview-status').textContent = state.previewing ? 'Building preview…' : hasPreview ? 'Preview ready' : '';
   if (hasPreview) $('preview-frame').srcdoc = r.artifact.html;
   else if (!state.previewing) $('preview-frame').srcdoc = '';
@@ -292,7 +320,7 @@ function renderRun() {
   $('learning-status').replaceChildren(
     el('strong', {}, learned.length ? `Learned guidance used · ${learned.length} ${learned.length === 1 ? 'lesson' : 'lessons'}` : 'No learned lessons used in this prompt'),
     ...learned.map(e => el('p', {}, `${e.text} — approved by ${(e.approved_by || e.owner_id).replace("console-", "")}, ${e.scope} scope`)),
-    !learned.length ? el('p', {class:'hint'}, 'This prompt may use documents and decisions. Approved lessons appear here only when selected and cited for the request.') : null);
+    ...(!learned.length ? [el('p', {class:'hint'}, 'This prompt may use documents and decisions. Approved lessons appear here only when selected and cited for the request.')] : []));
   const contributions = [];
   const provenance = Object.fromEntries((r.provenance || []).map(e => [e.key, e]));
   for (const section of ['preferences', 'current_decisions', 'requirements']) {
@@ -391,7 +419,7 @@ function renderFeedbackLesson(result) {
           el('strong', {}, 'Approved for future relevant prompts'),
           el('p', {}, text.value.trim()),
           el('p', {class:'hint'}, 'This does not rewrite the current prompt. Create a new request; when this lesson is relevant, its citation will appear under “Learned guidance used”. Newly saved lessons may need a moment to become searchable.'),
-          el('button', {class:'secondary',type:'button',onclick:() => { $('request-card').scrollIntoView({behavior:'smooth',block:'center'}); $('type-input').focus(); }}, 'Create the next prompt')));
+          el('button', {class:'secondary',type:'button',onclick:() => { $('type-input').value = state.baseline?.request || state.run.request; $('request-card').scrollIntoView({behavior:'smooth',block:'center'}); $('type-input').focus(); }}, 'Use the same request again')));
         $("feedback-status").textContent = ({project:"Lesson saved for this project.",team:"Lesson saved for your team.",personal:"Lesson saved for you."})[scope];
         await loadContext();
       }) }, "Approve for future prompts"))));

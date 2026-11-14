@@ -1,13 +1,16 @@
-# Judge showcase: the admin dashboard your team has maintained for months
+# Judge showcase: same request, visibly better instructions
 
-Run `python scripts/seed_software_showcase.py`. It adds an isolated Admin console workspace, Alice and Bob demo identities, four short sample project documents and three established engineering rules. Documents represent accumulated project history; do not claim they came from actual months of production usage. No pagination lesson is pre-approved.
+## Setup
+Run `python scripts/seed_software_showcase.py` once with Atlas and Voyage configured. Open the app as Alice in the Admin console workspace. The shared brain contains sample project history, shared components and engineering decisions. Keep the same generation-model settings for both runs.
 
-## 90-second story
-1. **Existing project:** briefly open the brain. Show architecture notes, the earlier search-performance decision and the current tickets. “Our team has been maintaining this dashboard. The brain holds the decisions we would normally have to explain again.”
-2. **Alice:** Use an example request → Create prompt. The request is simply “Add search to the users table.” Point to server-side search, existing shared components, 300 ms debounce, URL state and stale-request handling. None was in her sentence.
-3. **The bug:** Use example feedback. “We tested from page 8. Changing search looked broken because pagination stayed on page 8.” Suggest a lesson, choose This project, then approve. The lesson requires resetting pagination and a regression test from a later page.
-4. **Bob:** switch sessions, use the Orders-table example and create the prompt. Show Learned guidance used and Alice's attribution. “Bob didn't see that bug. His prompt already tells his agent how to avoid it.”
+## Visual walkthrough
+1. Click Use an example request: “Add search to the users table. Show sample results for a search for Alex.” Create prompt → Preview website → **Keep as before**.
+2. Click Use example feedback. It asks for a pale amber banner above active search results, with query, matching count and Clear search button. Click Suggest a lesson, review it, select **This project**, and approve.
+3. Click **Use the same request again**, then Create prompt. Point to **Learned guidance used** and its approved lesson. Click Preview website.
+4. Click **Compare before & after**. Show the same user request and model, the actual two saved outputs, and the visible search-summary change.
 
-Close: “Months of team context, plus yesterday's lesson, in the next prompt.”
+Narration: “We didn't rewrite the request or manually improve the prompt. We taught the shared brain one preference. It supplied the new instructions to the same model.”
 
-Keep the website preview optional. The proof is project-specific instructions and cited transfer of approved learning. Inspect any already-approved rehearsal lessons before presenting. Allow indexing time after approval. A conventional model could independently suggest resetting pagination; demonstrate the actual citation and provenance rather than claiming exclusivity.
+Optional closing: switch to Bob and request Orders search to demonstrate project-wide reuse in a fresh session.
+
+The HTML preview is inert. Do not claim the buttons work or the backend exists. Model variation can affect other visual details; the cited lesson and matching instruction support the intended change, while a single pair is not a controlled benchmark. Check that the amber banner actually appears before presenting. A rehearsal leaves the lesson approved; do not present repeated learning as new. Pinning stores a run ID per demo identity in this browser; authorization is still checked when loading it. Old previews are historical snapshots, not current approved instructions.
