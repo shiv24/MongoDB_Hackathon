@@ -1,5 +1,6 @@
 import React from "react";
-import { AbsoluteFill, Easing, Sequence, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, Audio, Easing, Sequence, interpolate, spring, staticFile, useCurrentFrame, useVideoConfig } from "remotion";
+import voiced from "./vo.json";
 import {
   BRIEF, CHECKS_PF, CHECKS_PLAIN, EXCLUDED, HERO_OLD, HERO_RULE, INCLUDED, PROJECT, REQUEST, USER, type Card,
 } from "./data";
@@ -299,13 +300,24 @@ const Close = () => {
   );
 };
 
+// Narration from ElevenLabs (scripts/voiceover.mjs); each clip starts a few frames into its scene.
+const VO_DELAY = 8;
+const Voice: React.FC<{ scene: keyof typeof S }> = ({ scene }) =>
+  (voiced as string[]).includes(scene) ? (
+    <Sequence from={VO_DELAY} layout="none"><Audio src={staticFile(`vo/${scene}.mp3`)} /></Sequence>
+  ) : null;
+
+const SCENES: [keyof typeof S, React.FC][] = [
+  ["hook", Hook], ["request", Request], ["context", Context], ["brief", Brief], ["result", Result], ["close", Close],
+];
+
 export const PromptForgeDemo = () => (
   <AbsoluteFill style={{ background: C.bg }}>
-    <Sequence from={S.hook[0]} durationInFrames={S.hook[1]}><Hook /></Sequence>
-    <Sequence from={S.request[0]} durationInFrames={S.request[1]}><Request /></Sequence>
-    <Sequence from={S.context[0]} durationInFrames={S.context[1]}><Context /></Sequence>
-    <Sequence from={S.brief[0]} durationInFrames={S.brief[1]}><Brief /></Sequence>
-    <Sequence from={S.result[0]} durationInFrames={S.result[1]}><Result /></Sequence>
-    <Sequence from={S.close[0]} durationInFrames={S.close[1]}><Close /></Sequence>
+    {SCENES.map(([key, Scene]) => (
+      <Sequence key={key} from={S[key][0]} durationInFrames={S[key][1]}>
+        <Scene />
+        <Voice scene={key} />
+      </Sequence>
+    ))}
   </AbsoluteFill>
 );

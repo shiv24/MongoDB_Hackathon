@@ -3,6 +3,7 @@
   "private": true,
   "scripts": {
     "studio": "remotion studio src/index.ts",
+    "voice": "node scripts/voiceover.mjs",
     "render": "remotion render src/index.ts PromptForgeDemo out/promptforge-demo.mp4"
   },
   "dependencies": {
