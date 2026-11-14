@@ -54,7 +54,10 @@ async function init() {
   $("active-context").textContent = `${state.me.name} · ${project.name}`;
   await loadContext();
   const saved = location.hash.match(/^#run=([a-f0-9]+)$/);
-  if (saved) await openRun(saved[1]);
+  if (saved) {
+    try { await openRun(saved[1]); }
+    catch (err) { if (err.status !== 404 && err.status !== 403) throw err; history.replaceState(null, '', location.pathname); toast('This prompt belongs to another workspace or teammate. Start a new request here.'); }
+  }
 }
 
 $('session-user').addEventListener('change', async e => {
