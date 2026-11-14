@@ -3,8 +3,8 @@
 
 
 const $ = (id) => document.getElementById(id);
-const DEFAULT_USER_ID = "alice";
-const DEFAULT_PROJECT_ID = "lumen-signup";
+const DEFAULT_USER_ID = "events-alice";
+const DEFAULT_PROJECT_ID = "team-events";
 const state = { me: null, projectId: null, run: null, context: null, previewing: false, feedbackRunId: null };
 
 // ---------- helpers ----------
@@ -45,7 +45,7 @@ const chip = (text) => el("span", { class: `chip ${text}` }, String(text).replac
 
 // ---------- fixed demo identity and project ----------
 async function init() {
-  state.me = await api("/login", { method: "POST", body: { user_id: sessionStorage.getItem("pf-demo-user") || DEFAULT_USER_ID } });
+  state.me = await api("/login", { method: "POST", body: { user_id: sessionStorage.getItem("pf-events-user") || DEFAULT_USER_ID } });
   $("session-user").value = state.me.user_id;
   const projects = await api("/projects");
   const project = projects.find((p) => p._id === DEFAULT_PROJECT_ID);
@@ -64,7 +64,7 @@ $('session-user').addEventListener('change', async e => {
     await api('/logout', {method:'POST'});
     state.run = null; state.context = null; state.feedbackRunId = null;
     history.replaceState(null, '', location.pathname);
-    sessionStorage.setItem('pf-demo-user', next);
+    sessionStorage.setItem('pf-events-user', next);
     $('type-input').value = ''; renderRun();
     await init();
     toast(`Fresh session as ${state.me.name}. Shared lessons stay; personal prompts do not.`);
@@ -72,7 +72,7 @@ $('session-user').addEventListener('change', async e => {
 });
 $('lesson-example').addEventListener('click', () => {
   if (!state.run?.brief) { toast('Create a prompt first, then add feedback.'); return; }
-  $('feedback-text').value = 'For all bulk exports in this project, include a downloadable manifest alongside the data file. The manifest must list active filters, exported row count, excluded fields, requester and timestamp.';
+  $('feedback-text').value = 'For every event page we build, include an Add to calendar button after RSVP. Include the event title, date, start and end time, and venue in the calendar entry.';
   $('feedback-card').scrollIntoView({behavior:'smooth',block:'center'}); $('feedback-text').focus();
 });
 async function openRun(id) {
@@ -104,7 +104,7 @@ $('send-btn').addEventListener('click', e => busy(e.currentTarget, 'Creating…'
   catch (err) { $('request-error').textContent = err.message; show('request-error'); }
   finally { show('request-status', false); }
 }));
-$('demo-request').addEventListener('click', () => { $('type-input').value = state.me?.user_id === 'bob' ? 'Write an implementation prompt for exporting invoices from our billing page.' : 'Write an implementation prompt for exporting customers from our customer list.'; $('type-input').focus(); });
+$('demo-request').addEventListener('click', () => { $('type-input').value = state.me?.user_id === 'events-bob' ? 'Build our movie night RSVP page.' : 'Build our pizza night RSVP page.'; $('type-input').focus(); });
 $('type-input').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('send-btn').click(); });
 
 $('talk-btn').addEventListener('click', async () => {
@@ -288,7 +288,7 @@ function renderRun() {
   const learned = (r.provenance || []).filter(e => e.type === 'lesson' && cited.has(e.id));
   $('learning-status').replaceChildren(
     el('strong', {}, learned.length ? `Learned guidance used · ${learned.length} ${learned.length === 1 ? 'lesson' : 'lessons'}` : 'No learned lessons used in this prompt'),
-    ...learned.map(e => el('p', {}, `${e.text} — approved by ${e.approved_by || e.owner_id}, ${e.scope} scope`)),
+    ...learned.map(e => el('p', {}, `${e.text} — approved by ${(e.approved_by || e.owner_id).replace("events-", "")}, ${e.scope} scope`)),
     !learned.length ? el('p', {class:'hint'}, 'This prompt may use documents and decisions. Approved lessons appear here only when selected and cited for the request.') : null);
   const contributions = [];
   const provenance = Object.fromEntries((r.provenance || []).map(e => [e.key, e]));

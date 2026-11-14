@@ -1,14 +1,14 @@
-# Judge showcase — teach once, help the team
+# Judge showcase: pizza night → movie night
 
-Keep the showcase under two minutes. Use the labeled demo identity selector; it is simulated identity, not production authentication.
+## Setup
+Run `python scripts/seed_events_showcase.py` once with Atlas and Voyage configured. It creates a separate Team events workspace, two demo identities, two short specs, and three shared rules. It does not pre-approve the calendar lesson or reset other data. Start the server and open the app. Identity switching is simulated for the hackathon.
 
-1. **Alice / 20 seconds:** click “Use an example request”, then Create prompt. Explain: “This starts from our project’s documents and decisions.”
-2. **Learn / 25 seconds:** click “Use example feedback”, then Suggest a lesson. Review the suggested lesson. Select **This project** and Approve for future prompts. Explain: “The useful correction becomes approved shared memory—not an invisible change to the model.”
-3. **Bob / 25 seconds:** switch to Bob. Click the example request: exporting invoices. Create prompt. Point to the manifest instruction and its lesson citation, which identifies Alice as approver. Explain: “Different teammate, fresh session, different feature. Bob never asked for a manifest.”
-4. **Inspect / 15 seconds:** open the shared brain. Show the lesson’s scope, approval and revision. Alice’s private prompt history does not appear in Bob’s session.
+## 90-second presentation
+1. **Alice:** click Use an example request, then Create prompt. “Alice is making a pizza-night RSVP page. The brain knows the date, venue, menu and shared design rules.”
+2. **Teach:** click Use example feedback. “We forgot something useful: add every event to your calendar after RSVP.” Click Suggest a lesson, review it, choose **This project**, then Approve for future prompts. Approval does not rewrite the existing prompt.
+3. **Bob:** switch to Bob. Click Use an example request, then Create prompt. “Bob is making a movie-night page. Different teammate. Fresh session. He never mentioned a calendar.”
+4. Point to **Learned guidance used**, the Add to calendar instruction and Alice's approval. Open the shared brain to show the durable project lesson.
 
-Close: “Your next prompt benefits from what your teammates learned—even when you weren’t in the conversation.”
+Close: “Teach it once. Your whole team starts smarter next time.”
 
-The manifest lesson is intentionally separate from the source documents and static decisions. Rehearsal may leave it approved in memory; inspect the brain first and be transparent about previously learned guidance. Do not present a repeated run as a first-time learning experiment. Atlas indexing is asynchronous; allow a moment after approval. The website preview is optional and not the focus.
-
-A later correction/retirement can demonstrate governance, but do not overload the short showcase. Do not claim this cannot be implemented through another memory system or MCP: this demo proves PromptForge’s explicit approval, scope, provenance and cross-session reuse.
+Skip website generation in a tight presentation; it is optional visual proof, not the product. Preview HTML is inert and does not store RSVPs or create working calendar downloads. If already rehearsed, show the approved lesson honestly as existing memory rather than pretending it was just learned. Allow a moment for Atlas indexing after approval.
