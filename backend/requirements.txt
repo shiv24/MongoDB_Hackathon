@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+pymongo
+anthropic
+voyageai
+python-dotenv
+itsdangerous
+beautifulsoup4
+pytest
