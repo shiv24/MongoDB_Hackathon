@@ -3,8 +3,8 @@
 
 
 const $ = (id) => document.getElementById(id);
-const DEFAULT_USER_ID = "forms-alice";
-const DEFAULT_PROJECT_ID = "product-forms";
+const DEFAULT_USER_ID = "console-alice";
+const DEFAULT_PROJECT_ID = "admin-console";
 const state = { me: null, projectId: null, run: null, context: null, previewing: false, feedbackRunId: null };
 
 // ---------- helpers ----------
@@ -45,7 +45,7 @@ const chip = (text) => el("span", { class: `chip ${text}` }, String(text).replac
 
 // ---------- fixed demo identity and project ----------
 async function init() {
-  state.me = await api("/login", { method: "POST", body: { user_id: sessionStorage.getItem("pf-forms-user") || DEFAULT_USER_ID } });
+  state.me = await api("/login", { method: "POST", body: { user_id: sessionStorage.getItem("pf-console-user") || DEFAULT_USER_ID } });
   $("session-user").value = state.me.user_id;
   const projects = await api("/projects");
   const project = projects.find((p) => p._id === DEFAULT_PROJECT_ID);
@@ -67,7 +67,7 @@ $('session-user').addEventListener('change', async e => {
     await api('/logout', {method:'POST'});
     state.run = null; state.context = null; state.feedbackRunId = null;
     history.replaceState(null, '', location.pathname);
-    sessionStorage.setItem('pf-forms-user', next);
+    sessionStorage.setItem('pf-console-user', next);
     $('type-input').value = ''; renderRun();
     await init();
     toast(`Fresh session as ${state.me.name}. Shared lessons stay; personal prompts do not.`);
@@ -75,7 +75,7 @@ $('session-user').addEventListener('change', async e => {
 });
 $('lesson-example').addEventListener('click', () => {
   if (!state.run?.brief) { toast('Create a prompt first, then add feedback.'); return; }
-  $('feedback-text').value = 'For every form in this project, preserve entered values when validation fails. Show an error summary above the form and move keyboard focus to the first invalid field.';
+  $('feedback-text').value = 'We hit a bug on page 8: changing the search showed an empty table because the page stayed at 8. For every paginated table, reset to page 1 when search or filters change, preserve the sort, and add a regression test starting from a later page.';
   $('feedback-card').scrollIntoView({behavior:'smooth',block:'center'}); $('feedback-text').focus();
 });
 async function openRun(id) {
@@ -107,7 +107,7 @@ $('send-btn').addEventListener('click', e => busy(e.currentTarget, 'Creating…'
   catch (err) { $('request-error').textContent = err.message; show('request-error'); }
   finally { show('request-status', false); }
 }));
-$('demo-request').addEventListener('click', () => { $('type-input').value = state.me?.user_id === 'forms-bob' ? 'Build our billing-details form.' : 'Build our signup form.'; $('type-input').focus(); });
+$('demo-request').addEventListener('click', () => { $('type-input').value = state.me?.user_id === 'console-bob' ? 'Add search to the orders table.' : 'Add search to the users table.'; $('type-input').focus(); });
 $('type-input').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('send-btn').click(); });
 
 $('talk-btn').addEventListener('click', async () => {
@@ -291,7 +291,7 @@ function renderRun() {
   const learned = (r.provenance || []).filter(e => e.type === 'lesson' && cited.has(e.id));
   $('learning-status').replaceChildren(
     el('strong', {}, learned.length ? `Learned guidance used · ${learned.length} ${learned.length === 1 ? 'lesson' : 'lessons'}` : 'No learned lessons used in this prompt'),
-    ...learned.map(e => el('p', {}, `${e.text} — approved by ${(e.approved_by || e.owner_id).replace("forms-", "")}, ${e.scope} scope`)),
+    ...learned.map(e => el('p', {}, `${e.text} — approved by ${(e.approved_by || e.owner_id).replace("console-", "")}, ${e.scope} scope`)),
     !learned.length ? el('p', {class:'hint'}, 'This prompt may use documents and decisions. Approved lessons appear here only when selected and cited for the request.') : null);
   const contributions = [];
   const provenance = Object.fromEntries((r.provenance || []).map(e => [e.key, e]));

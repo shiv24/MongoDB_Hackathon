@@ -1,13 +1,13 @@
-# Judge showcase: signup → billing
+# Judge showcase: the admin dashboard your team has maintained for months
 
-Run `python scripts/seed_software_showcase.py` once with Atlas and Voyage configured. This adds a separate Product workspace, Alice and Bob demo identities, two short software specs and three shared rules. It does not reset other workspaces or pre-approve the learning lesson. Identity switching is simulated for the hackathon.
+Run `python scripts/seed_software_showcase.py`. It adds an isolated Admin console workspace, Alice and Bob demo identities, four short sample project documents and three established engineering rules. Documents represent accumulated project history; do not claim they came from actual months of production usage. No pagination lesson is pre-approved.
 
-## 90-second walkthrough
-1. **Alice builds a signup prompt.** Select Alice, click Use an example request, then Create prompt. “The brain starts with our requirements and engineering rules.”
-2. **Teach once.** Click Use example feedback, then Suggest a lesson. The feedback says to preserve entered values after validation errors, show an error summary and focus the first invalid field. Review the lesson, choose **This project**, then Approve for future prompts.
-3. **Bob starts fresh.** Switch to Bob, click the example request for a billing form, and create the prompt. Bob never mentions error handling.
-4. **Show the transfer.** Point to Learned guidance used and Alice's approval. “Different developer, different feature, fresh session. Bob benefits from what Alice learned.”
+## 90-second story
+1. **Existing project:** briefly open the brain. Show architecture notes, the earlier search-performance decision and the current tickets. “Our team has been maintaining this dashboard. The brain holds the decisions we would normally have to explain again.”
+2. **Alice:** Use an example request → Create prompt. The request is simply “Add search to the users table.” Point to server-side search, existing shared components, 300 ms debounce, URL state and stale-request handling. None was in her sentence.
+3. **The bug:** Use example feedback. “We tested from page 8. Changing search looked broken because pagination stayed on page 8.” Suggest a lesson, choose This project, then approve. The lesson requires resetting pagination and a regression test from a later page.
+4. **Bob:** switch sessions, use the Orders-table example and create the prompt. Show Learned guidance used and Alice's attribution. “Bob didn't see that bug. His prompt already tells his agent how to avoid it.”
 
-Close: “Your next prompt benefits from what your teammates already figured out.”
+Close: “Months of team context, plus yesterday's lesson, in the next prompt.”
 
-Keep website generation optional. A preview is not a functioning backend. The evidence is the cited lesson and its transfer, not a guarantee the model would never independently suggest similar guidance. Allow Atlas indexing time after approval. If rehearsed, disclose already-approved memory instead of pretending it was newly learned.
+Keep the website preview optional. The proof is project-specific instructions and cited transfer of approved learning. Inspect any already-approved rehearsal lessons before presenting. Allow indexing time after approval. A conventional model could independently suggest resetting pagination; demonstrate the actual citation and provenance rather than claiming exclusivity.
