@@ -371,6 +371,7 @@ function renderFeedbackLesson(result) {
         await loadContext();
       }) }, "Save lesson"))));
 }
+window.addEventListener('hashchange', () => { const match = location.hash.match(/^#run=([a-f0-9]+)$/); if (state.me && match && match[1] !== state.run?._id) openRun(match[1]).catch(e => toast(e.message)); });
 init().catch((e) => {
   $("active-context").textContent = "Workspace unavailable";
   toast(e.message);
