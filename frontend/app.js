@@ -85,7 +85,7 @@ $('send-btn').addEventListener('click', e => busy(e.currentTarget, 'Creating…'
   catch (err) { $('request-error').textContent = err.message; show('request-error'); }
   finally { show('request-status', false); }
 }));
-$('demo-request').addEventListener('click', () => { $('type-input').value = 'Build the Northstar customer export screen using our demo spec and team decisions.'; $('type-input').focus(); });
+$('demo-request').addEventListener('click', () => { $('type-input').value = 'Build the customer export screen using our product requirements and team decisions.'; $('type-input').focus(); });
 $('type-input').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('send-btn').click(); });
 
 $('talk-btn').addEventListener('click', async () => {

@@ -1,9 +1,9 @@
-# Demo scenario: Northstar customer exports
+# Customer exports — product requirements
 
-Synthetic hackathon example. These requirements describe a fictional product, not a deployed security system.
+Requirements for the customer export feature. These describe intended behavior; they are not evidence of implemented security controls.
 
 ## Product
-Northstar is a B2B customer operations workspace. Build its customer export screen for workspace administrators. The screen lives inside an existing admin console with a compact navigation rail and a clear page header. Use an understated ivory surface, dark forest-green navigation and restrained green action buttons. Avoid a solid green page background for this demo.
+Build a customer export screen for workspace administrators. The screen lives inside an existing admin console with a compact navigation rail and a clear page header. Use an understated ivory surface, dark forest-green navigation and restrained green action buttons. Avoid a solid green page background for this screen.
 
 ## Required experience
 - Show a customer table with customer name, company, email, account status and created date.
@@ -12,7 +12,7 @@ Northstar is a B2B customer operations workspace. Build its customer export scre
 - Include an export configuration area with format fixed to CSV and an explicit list of the allowed columns: customer name, company, email, account status and created date.
 - Show a confirmation state that names the workspace, filter summary, row count, included fields and CSV format before export begins.
 - Include pending, ready, failed and empty-result states in the implementation brief. Disable export for an empty result and explain how to change filters.
-- Display a recent export activity list with requester, time, workspace, row count and status. Use clearly fictional example names in the preview.
+- Display a recent export activity list with requester, time, workspace, row count and status. Use clearly sample names in the preview.
 
 ## Security and engineering requirements
 - Derive the tenant/workspace from the authenticated server session. Never trust a client-supplied tenant identifier as authorization.
@@ -31,11 +31,3 @@ Northstar is a B2B customer operations workspace. Build its customer export scre
 6. Empty, denied, pending, ready and failed states are addressed.
 7. The preview clearly marks its sample data and uses a readable hierarchy, table, filter controls, export summary and activity list.
 
-## Presenting the demo
-1. Open the shared brain and show the named demo source plus the three demo decisions.
-2. Use the built-in example: “Build the Northstar customer export screen using our demo spec and team decisions.”
-3. Show the additional constraints in the generated prompt: session-derived tenant, allowlisted fields, server permissions, active filters and audit metadata. Open the evidence cards.
-4. Copy the prompt for an agent, or generate the optional visual preview. Explain that the preview is illustrative; acceptance checks are requirements, not executed tests.
-5. Give one specific correction and approve it at project scope. Repeat the request to show the lesson when relevant. Allow Atlas indexing time before the repeat.
-
-Run `python scripts/seed_demo_scenario.py` with the local server on port 8018 to add the sample records without resetting the database. Matching records are reused. Do not claim that a synthetic example establishes production security.
