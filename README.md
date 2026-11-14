@@ -173,7 +173,7 @@ Add `ELEVENLABS_API_KEY` for microphone dictation. `ELEVENLABS_STT_MODEL` defaul
 python scripts/doctor.py
 python scripts/doctor.py --live
 python scripts/setup_atlas.py
-python scripts/seed_software_showcase.py
+python scripts/prepare_demo.py
 uvicorn app.main:app --reload --app-dir backend
 ```
 
@@ -225,7 +225,7 @@ node --check frontend/app.js
 pytest backend/tests/test_isolation.py -q
 ```
 
-Current offline result: **49 backend tests passed, 3 live Atlas tests skipped; 4 frontend sandbox tests passed**. Run the frontend tests with `node --test frontend/tests/preview.test.mjs`. A headless browser confirmed Alice sees the three source visibility choices; perform the full manual workflow below after setup.
+Current offline result: **53 backend tests passed, 3 live Atlas tests skipped; 4 frontend sandbox tests passed**. Run the frontend tests with `node --test frontend/tests/preview.test.mjs`. A headless browser confirmed Alice sees the three source visibility choices; perform the full manual workflow below after setup.
 
 Offline tests cover API flow, scopes, lifecycle, private runs, stale/expired memory, explicit approval boundaries, direct generation with mocked providers, preview caching and sanitization. Live provider calls and real browser microphone/agent behavior still require credentials and a live smoke test.
 

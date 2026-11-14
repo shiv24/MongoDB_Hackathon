@@ -30,3 +30,16 @@ Freshly approved feedback is explicitly included in its immediate rebuild after 
 ## Merged interactive preview check
 
 [Open the tested interactive users table](http://localhost:8018/#run=02aaa2ccc3514f31ae9eb9b94d4762ae). Type Alex to see four matches and page 1 of 1, then Clear search to return to the full sample dataset. This is a separate verification run, not the original before/after comparison. Sandbox URL updates are intentionally ignored; this prototype does not change the browser URL.
+
+## Repeat the demo reliably
+
+Open http://localhost:8018 and click **Start fresh demo** in the header. Each click makes an isolated sample team and project with four sources, no approved lessons, and the same saved starting preview. No original team data or earlier rounds are deleted.
+
+1. Show the starting preview (explicitly labeled as saved).
+2. Click **Use example feedback**, keep **This project**, then **Save feedback & rebuild**.
+3. Show the generated purple buttons and the cited new guidance in the comparison.
+4. Close the comparison and click **Start fresh demo** for the next audience.
+
+**Team workspace** returns to the original shared workspace. The demo uses direct scoped reads of its four curated sample sources plus reranking so it does not depend on indexing new copies. Normal workspaces continue using Atlas Vector Search. The new brief and after-preview are generated live; their timing and layouts can vary.
+
+On a new database, run `python scripts/setup_atlas.py`, then `python scripts/prepare_demo.py` once. Preparation creates the sample context and loads the committed prepared starting preview. Subsequent preparation calls reuse it. Fresh-demo resets do not call a model.

@@ -10,7 +10,7 @@
   <header class="topbar">
     <div class="brand"><span class="brand-icon">✳</span> PromptForge <span class="edition">TEAM INTELLIGENCE</span></div>
     <div class="topbar-controls">
-      <span id="active-context" class="muted">Loading workspace…</span><label class="session-label">Demo session <select id="session-user" aria-label="Demo session"><option value="console-alice">Alice</option><option value="console-bob">Bob</option></select></label>
+      <button id="demo-start" class="secondary" type="button">Start fresh demo</button><button id="demo-exit" class="secondary hidden" type="button">Team workspace</button><span id="active-context" class="muted">Loading workspace…</span><label class="session-label">Demo session <select id="session-user" aria-label="Demo session"><option value="console-alice">Alice</option><option value="console-bob">Bob</option></select></label>
     </div>
   </header>
 
@@ -18,7 +18,7 @@
     <main class="flow">
       <!-- 1. Request: type directly or dictate into the request field. -->
       <section class="card" id="request-card">
-        <h2>1. Describe what you want</h2>
+        <div id="demo-guide" class="callout hidden">Demo ready · This is a prepared starting preview. Click Use example feedback below, then Save feedback &amp; rebuild. Start fresh demo repeats this without changing team data.</div><h2>1. Describe what you want</h2>
         <p class="hint">Type a request, then press Build preview. We’ll write the prompt and generate the result.</p>
         <div class="row">
           <button id="talk-btn" type="button">🎙 Record request</button>

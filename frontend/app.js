@@ -60,6 +60,7 @@ $('feedback-scope').addEventListener('change', () => {
 });
 
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
+const personName = id => id?.startsWith('demo-alice-') ? 'Alice' : (id || '').replace('console-', '');
 const chip = (text) => el("span", { class: `chip ${text}` }, String(text).replace(/_/g, " "));
 
 // ---------- fixed demo identity and project ----------
@@ -70,7 +71,10 @@ async function init() {
   if ($('feedback-scope').selectedOptions[0].disabled) $('feedback-scope').value = 'project';
   $('feedback-scope').dispatchEvent(new Event('change'));
   const projects = await api("/projects");
-  const project = projects.find((p) => p._id === DEFAULT_PROJECT_ID);
+  const isDemo = state.me.user_id.startsWith('demo-alice-');
+  const project = projects.find((p) => p._id === (isDemo ? state.me.project_ids[0] : DEFAULT_PROJECT_ID));
+  if (isDemo) { $('session-user').replaceChildren(el('option', {value:state.me.user_id}, 'Alice · demo')); }
+  show('demo-exit', isDemo); show('demo-guide', isDemo);
   if (!project) throw new Error(`Default project ${DEFAULT_PROJECT_ID} is not available to ${DEFAULT_USER_ID}. Seed the demo data first.`);
   state.projectId = project._id;
   $("active-context").textContent = `${state.me.name} · ${project.name}`;
@@ -92,6 +96,18 @@ async function init() {
     catch (err) { if (err.status !== 404 && err.status !== 403) throw err; history.replaceState(null, '', location.pathname); toast('This prompt belongs to another workspace or teammate. Start a new request here.'); }
   }
 }
+
+$('demo-start').addEventListener('click', e => busy(e.currentTarget, 'Preparing…', async () => {
+  if (state.building || state.previewing || $('send-btn').disabled) throw new Error('Wait for the current task to finish.');
+  const result = await api('/demo/start', {method:'POST'});
+  sessionStorage.setItem('pf-console-user', result.user_id);
+  location.replace(`/?demo=${result.project_id}#run=${result.run_id}`);
+}));
+$('demo-exit').addEventListener('click', () => {
+  if (state.building || state.previewing || $('send-btn').disabled) return;
+  sessionStorage.setItem('pf-console-user', DEFAULT_USER_ID);
+  location.href = '/';
+});
 
 $('session-user').addEventListener('change', async e => {
   const next = e.target.value;
@@ -130,6 +146,7 @@ async function submitRequest(clarification = '', lessonIds = []) {
   if (state.building || state.previewing) throw new Error('Wait for the current build to finish.');
   state.building = true;
   $('session-user').disabled = true;
+  $('demo-start').disabled = true; $('demo-exit').disabled = true;
   $('remember-rebuild').disabled = true;
   $('suggest-lesson').disabled = true;
   progress('1 of 2 · Writing your prompt using project memory');
@@ -141,6 +158,7 @@ async function submitRequest(clarification = '', lessonIds = []) {
     try { await loadContext(); } catch { toast('Preview ready. Project memory list could not refresh.'); }
     $('preview-card').scrollIntoView({behavior:'smooth',block:'start'});
   } finally {
+    $('demo-start').disabled = false; $('demo-exit').disabled = false;
     state.building = false;
     $('send-btn').disabled = false;
     $('session-user').disabled = false;
@@ -266,7 +284,7 @@ function renderContext() {
     el('button', {class:'history-item', type:'button', disabled:state.previewing, onclick: e => busy(e.currentTarget, 'Opening…', () => openRun(r._id))}, r.request)));
   if (!(c.runs || []).length) $('recent-runs').append(el('p', {class:'hint'}, 'Your saved prompts will appear here.'));
   $("sources").replaceChildren(...c.sources.map((s) => el("li", { class: used.has(s.source_id) ? "used" : "" },
-    el("span", { class: "text" }, s.title), el("span", { class: "meta" }, `${s.kind} · revision ${s.revision} · added by ${s.added_by}`))));
+    el("span", { class: "text" }, s.title), el("span", { class: "meta" }, `${s.kind} · revision ${s.revision} · added by ${personName(s.added_by)}`))));
   if (!c.sources.length) $("sources").append(el("li", { class: "muted" }, "No sources yet."));
 }
 
@@ -376,7 +394,7 @@ function renderRun() {
   const learned = (r.provenance || []).filter(e => e.type === 'lesson' && cited.has(e.id));
   $('learning-status').replaceChildren(
     el('strong', {}, learned.length ? `Learned guidance used · ${learned.length} ${learned.length === 1 ? 'lesson' : 'lessons'}` : 'No learned lessons used in this prompt'),
-    ...learned.map(e => el('p', {}, `${e.text} — approved by ${(e.approved_by || e.owner_id).replace("console-", "")}, ${e.scope} scope`)),
+    ...learned.map(e => el('p', {}, `${e.text} — approved by ${personName(e.approved_by || e.owner_id)}, ${e.scope} scope`)),
     ...(!learned.length ? [el('p', {class:'hint'}, 'This prompt may use documents and decisions. Approved lessons appear here only when selected and cited for the request.')] : []));
   const contributions = [];
   const provenance = Object.fromEntries((r.provenance || []).map(e => [e.key, e]));

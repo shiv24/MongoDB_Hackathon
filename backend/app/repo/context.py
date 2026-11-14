@@ -64,8 +64,14 @@ def visible_source_revision(session: dict, project_id: str, source_id: str) -> i
 
 def search_sources(session: dict, project_id: str, query_embedding: list[float],
                    limit: int = config.RETRIEVE_LIMIT) -> list[dict]:
-    hits = vector_search(get_db().sources, "sources_scoped_vector", query_embedding,
-                         scope.source_filter(session, project_id), limit * 2)
+    authorized = scope.source_filter(session, project_id)
+    if get_db().projects.find_one({'_id': project_id, 'team_id':session['team_id'], 'demo':True}):
+        # A rehearsal has four curated documents; read them directly so a fresh copy
+        # cannot lose context while Atlas asynchronously indexes its new IDs.
+        hits = [{**doc, 'score':1.0} for doc in get_db().sources.find(authorized, {'embedding':0}).limit(limit * 2)]
+    else:
+        hits = vector_search(get_db().sources, "sources_scoped_vector", query_embedding,
+                             authorized, limit * 2)
     # keep only chunks from each source's latest revision
     latest = {}
     for h in hits:

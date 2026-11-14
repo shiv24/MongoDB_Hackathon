@@ -1,0 +1,161 @@
+{
+  "request": "Add search to the users table. Show sample results for a search for Alex.",
+  "brief": {
+    "objective": "Add server-side search functionality to the existing Users table, matching user name or email, including a search input with debounce, URL parameter sync, and full request state handling. Display sample results for the query \"Alex\".",
+    "requirements": [
+      {
+        "text": "Users search matches name or email",
+        "sources": [
+          "S1"
+        ],
+        "uncited": false
+      },
+      {
+        "text": "Use shared SearchInput, DataTable, and EmptyState components",
+        "sources": [
+          "S2"
+        ],
+        "uncited": false
+      },
+      {
+        "text": "Search is performed server-side",
+        "sources": [
+          "S2"
+        ],
+        "uncited": false
+      },
+      {
+        "text": "Debounce search input by 300 ms, cancel or ignore stale requests",
+        "sources": [
+          "S3"
+        ],
+        "uncited": false
+      },
+      {
+        "text": "Represent search state in URL parameters",
+        "sources": [
+          "S3"
+        ],
+        "uncited": false
+      },
+      {
+        "text": "Add loading, no-results, and request-error states plus a clear-search action",
+        "sources": [
+          "S4"
+        ],
+        "uncited": false
+      },
+      {
+        "text": "Preserve current sort and unrelated filters on search",
+        "sources": [
+          "S1"
+        ],
+        "uncited": false
+      },
+      {
+        "text": "Extend the existing Users table rather than rebuild",
+        "sources": [
+          "S1"
+        ],
+        "uncited": false
+      }
+    ],
+    "current_decisions": [],
+    "implementation_context": [
+      {
+        "text": "React frontend with shared apiClient for requests",
+        "sources": [
+          "S2"
+        ],
+        "uncited": false
+      },
+      {
+        "text": "Existing REST backend with server-side pagination at 25 rows per page",
+        "sources": [
+          "S1"
+        ],
+        "uncited": false
+      },
+      {
+        "text": "Existing Users table with server-side pagination, sorting, and filters",
+        "sources": [
+          "S1"
+        ],
+        "uncited": false
+      }
+    ],
+    "preferences": [],
+    "acceptance_checks": [
+      {
+        "text": "Search input above Users table filters results by name or email matching \"Alex\"",
+        "sources": []
+      },
+      {
+        "text": "API requests include search query parameter after 300 ms debounce",
+        "sources": []
+      },
+      {
+        "text": "URL parameters reflect the current search string",
+        "sources": []
+      },
+      {
+        "text": "Loading state shown while search request is pending",
+        "sources": []
+      },
+      {
+        "text": "No-results state displayed if search returns empty",
+        "sources": []
+      },
+      {
+        "text": "Error state shown on request failure with retry or clear option",
+        "sources": []
+      },
+      {
+        "text": "Clear search input resets table to full user list preserving sort and filters",
+        "sources": []
+      },
+      {
+        "text": "Sorting and filters remain unchanged when performing a new search",
+        "sources": []
+      },
+      {
+        "text": "Sample results for \"Alex\" displayed in the table correspond to server response",
+        "sources": []
+      }
+    ],
+    "open_questions": [],
+    "assumptions": [
+      "API supports a search query parameter for users endpoint over name or email",
+      "Search results use the same pagination and sorting mechanism as existing Users table",
+      "The shared DataTable component supports dynamic data source changes including search",
+      "Sample results for \"Alex\" come from using the implemented search input after integration",
+      "Debounce interval is 300 ms for search input",
+      "Search state maintained in URL parameters",
+      "Use shared UI components for consistency (SearchInput, DataTable, EmptyState)"
+    ],
+    "citation_warnings": []
+  },
+  "artifact": {
+    "html": "<!doctype html><html><head><meta http-equiv=\"Content-Security-Policy\" content=\"default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; form-action 'none'; base-uri 'none'\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><style>body{font-family:system-ui,sans-serif!important;padding:24px!important;background:#f8fafc!important;color:#172033!important}h1{font-size:28px!important}button{background:#2563eb!important;color:#fff!important;border:0!important;border-radius:8px!important;padding:10px 16px!important}input{border:1px solid #cbd5e1!important;border-radius:8px!important;padding:10px!important}table{background:white!important;border-radius:10px!important;overflow:hidden!important}th,td{padding:12px!important;font-size:14px!important}th{background:#eef2f7!important}</style></head><body><!DOCTYPE html>\n\n<html lang=\"en\">\n<head>\n\n\n<title>Users Table with Search</title>\n<style>\n  body {\n    font-family: Arial, sans-serif;\n    margin: 1rem;\n    max-width: 900px;\n    margin-left: auto;\n    margin-right: auto;\n    color: #222;\n  }\n  h1 {\n    margin-bottom: 0.5rem;\n  }\n  .search-container {\n    margin-bottom: 1rem;\n  }\n  label {\n    font-weight: 600;\n    display: block;\n    margin-bottom: 0.25rem;\n  }\n  input[type=\"search\"] {\n    width: 100%;\n    max-width: 400px;\n    padding: 0.5rem 0.75rem;\n    font-size: 1rem;\n    border: 1px solid #ccc;\n    border-radius: 4px;\n    box-sizing: border-box;\n  }\n  input[type=\"search\"]:focus {\n    border-color: #005fcc;\n    outline: none;\n    box-shadow: 0 0 3px 1px #a0c4ff;\n  }\n\n  table {\n    width: 100%;\n    border-collapse: collapse;\n    text-align: left;\n  }\n  thead tr {\n    background-color: #f2f2f2;\n  }\n  th, td {\n    padding: 0.5rem 0.75rem;\n    border: 1px solid #ddd;\n  }\n  th.sortable {\n    cursor: pointer;\n    user-select: none;\n    position: relative;\n  }\n  th.sortable::after {\n    content: '';\n    position: absolute;\n    right: 0.5rem;\n    top: 50%;\n    border: 5px solid transparent;\n  }\n  th.sortable.asc::after {\n    border-bottom-color: #000;\n    margin-top: -7px;\n  }\n  th.sortable.desc::after {\n    border-top-color: #000;\n    margin-top: -2px;\n  }\n  .loading, .error, .empty {\n    margin-top: 1rem;\n    padding: 1rem;\n    border-radius: 6px;\n    background: #f9f9f9;\n    border: 1px solid #ccc;\n  }\n  .loading {\n    color: #005fcc;\n  }\n  .error {\n    color: #cc0000;\n  }\n  .empty {\n    color: #666666;\n  }\n  .actions {\n    margin-top: 0.5rem;\n  }\n  button {\n    background-color: #005fcc;\n    border: none;\n    color: white;\n    padding: 0.375rem 0.75rem;\n    font-size: 0.9rem;\n    border-radius: 4px;\n    cursor: pointer;\n    margin-right: 0.5rem;\n  }\n  button:hover {\n    background-color: #003e9e;\n  }\n  @media (max-width: 600px) {\n    table, thead, tbody, th, td, tr {\n      display: block;\n    }\n    thead tr {\n      display: none;\n    }\n    tr {\n      margin-bottom: 1rem;\n      border: 1px solid #ddd;\n      border-radius: 6px;\n      padding: 0.5rem;\n    }\n    td {\n      border: none;\n      padding-left: 40%;\n      position: relative;\n      text-align: right;\n    }\n    td::before {\n      content: attr(data-label);\n      position: absolute;\n      left: 10px;\n      width: 45%;\n      padding-left: 0.5rem;\n      font-weight: 600;\n      text-align: left;\n    }\n  }\n</style>\n</head>\n<body>\n<h1>Users</h1>\n<div class=\"search-container\">\n<label for=\"search-input\">Search users (name or email):</label>\n<input aria-label=\"Search users by name or email\" autocomplete=\"off\" id=\"search-input\" placeholder=\"Search users\" type=\"search\"/>\n<div aria-atomic=\"true\" aria-live=\"polite\" class=\"actions\">\n<button hidden=\"\" id=\"clear-search-button\" type=\"button\">Clear Search</button>\n</div>\n</div>\n<section aria-busy=\"false\" aria-live=\"polite\" aria-relevant=\"additions removals\">\n<table aria-label=\"Users table\" id=\"users-table\" role=\"grid\">\n<thead>\n<tr>\n<th aria-sort=\"none\" class=\"sortable\" data-sort-key=\"name\" scope=\"col\" tabindex=\"0\">Name</th>\n<th aria-sort=\"none\" class=\"sortable\" data-sort-key=\"email\" scope=\"col\" tabindex=\"0\">Email</th>\n<th scope=\"col\">Role</th>\n</tr>\n</thead>\n<tbody id=\"users-tbody\">\n<!-- user rows go here -->\n</tbody>\n</table>\n</section>\n<div aria-live=\"assertive\" id=\"status-message\" role=\"alert\" style=\"margin-top:1rem;\"></div>\n<script>\n(() => {\n  // Shared API client simulating server-side pagination, sorting and search\n  // Users data sample\n  const ALL_USERS = [\n    { id: 1, name: \"Alexander Hamilton\", email: \"alex.hamilton@example.com\", role: \"Admin\" },\n    { id: 2, name: \"Alexa Johnson\", email: \"alexa.johnson@example.com\", role: \"User\" },\n    { id: 3, name: \"Alice Cooper\", email: \"alice.cooper@example.com\", role: \"User\" },\n    { id: 4, name: \"Bob Marley\", email: \"bob.marley@example.com\", role: \"User\" },\n    { id: 5, name: \"Alexandra Daddario\", email: \"alex.daddario@example.com\", role: \"Manager\" },\n    { id: 6, name: \"Charlie Brown\", email: \"charlie.b@example.com\", role: \"User\" },\n    { id: 7, name: \"David Tennant\", email: \"david.tennant@example.com\", role: \"User\" },\n    { id: 8, name: \"Eve Polastri\", email: \"eve.p@example.com\", role: \"User\" },\n    { id: 9, name: \"Frank Underwood\", email: \"frank.u@example.com\", role: \"Admin\" },\n    { id: 10, name: \"George Washington\", email: \"george.w@example.com\", role: \"Manager\" },\n    { id: 11, name: \"Alexis Rhodes\", email: \"alexis.rhodes@example.com\", role: \"User\" },\n    { id: 12, name: \"Henry Cavill\", email: \"henry.c@example.com\", role: \"User\" },\n    { id: 13, name: \"Irene Adler\", email: \"irene.adler@example.com\", role: \"User\" },\n    { id: 14, name: \"Jack Sparrow\", email: \"jack.sparrow@example.com\", role: \"User\" },\n    { id: 15, name: \"Kelly Clarkson\", email: \"kelly.c@example.com\", role: \"User\" },\n    { id: 16, name: \"Laura Palmer\", email: \"laura.p@example.com\", role: \"Manager\" },\n    { id: 17, name: \"Michael Scott\", email: \"michael.scott@example.com\", role: \"User\" },\n    { id: 18, name: \"Nancy Drew\", email: \"nancy.drew@example.com\", role: \"User\" },\n    { id: 19, name: \"Oscar Wilde\", email: \"oscar.w@example.com\", role: \"User\" },\n    { id: 20, name: \"Pam Beesly\", email: \"pam.b@example.com\", role: \"User\" },\n    { id: 21, name: \"Quinn Fabray\", email: \"quinn.f@example.com\", role: \"User\" },\n    { id: 22, name: \"Rachel Green\", email: \"rachel.g@example.com\", role: \"User\" },\n    { id: 23, name: \"Sam Winchester\", email: \"sam.w@example.com\", role: \"User\" },\n    { id: 24, name: \"Tom Hanks\", email: \"tom.h@example.com\", role: \"User\" },\n    { id: 25, name: \"Uma Thurman\", email: \"uma.t@example.com\", role: \"User\" },\n    { id: 26, name: \"Victor Stone\", email: \"victor.s@example.com\", role: \"User\" },\n    { id: 27, name: \"Walter White\", email: \"walter.w@example.com\", role: \"Admin\" },\n    { id: 28, name: \"Xena Warrior\", email: \"xena.w@example.com\", role: \"User\" },\n    { id: 29, name: \"Yara Greyjoy\", email: \"yara.g@example.com\", role: \"User\" },\n    { id: 30, name: \"Zoe Barnes\", email: \"zoe.b@example.com\", role: \"User\" }\n  ];\n\n  // Backend parameters: page (1-based), pageSize=25, sortBy (field), sortOrder ('asc'|'desc'), search\n  function apiGetUsers({ page = 1, pageSize = 25, sortBy = 'name', sortOrder = 'asc', search = '' }) {\n    return new Promise((resolve, reject) => {\n      // Simulate variable network latency and occasional error\n      const latency = 400 + Math.random() * 400;\n      setTimeout(() => {\n        // 10% chance to fail\n        if (Math.random() < 0.1) { reject(new Error('Network error')); return; }\n\n        let filtered = ALL_USERS;\n        if (search.trim()) {\n          const q = search.trim().toLowerCase();\n          filtered = filtered.filter(u => u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q));\n        }\n\n        // Sorting\n        filtered = filtered.slice().sort((a,b) => {\n          let vA = a[sortBy];\n          let vB = b[sortBy];\n          if (typeof vA === 'string') vA = vA.toLowerCase();\n          if (typeof vB === 'string') vB = vB.toLowerCase();\n          if (vA < vB) return sortOrder === 'asc' ? -1 : 1;\n          if (vA > vB) return sortOrder === 'asc' ? 1 : -1;\n          return 0;\n        });\n\n        const total = filtered.length;\n        const pageCount = Math.ceil(total / pageSize);\n        const safePage = Math.min(Math.max(1, page), pageCount || 1);\n        const start = (safePage -1)* pageSize;\n        const pageItems = filtered.slice(start, start + pageSize);\n\n        resolve({\n          data: pageItems,\n          total,\n          page: safePage,\n          pageCount\n        });\n      }, latency);\n    });\n  }\n\n  // Shared SearchInput component\n  function SearchInput({ container, initialValue = '', debounceMs = 300, onChange }) {\n    const input = document.createElement('input');\n    input.type = 'search';\n    input.autocomplete = 'off';\n    input.placeholder = 'Search users';\n    input.value = initialValue;\n    input.setAttribute('aria-label', 'Search users by name or email');\n    container.appendChild(input);\n\n    let debounceTimer = null;\n    let lastValue = input.value;\n\n    function emitChange(value) {\n      if (onChange && value !== lastValue) {\n        lastValue = value;\n        onChange(value);\n      }\n    }\n\n    input.addEventListener('input', () => {\n      clearTimeout(debounceTimer);\n      const val = input.value;\n      debounceTimer = setTimeout(() => {\n        emitChange(val.trim());\n      }, debounceMs);\n    });\n\n    return {\n      getValue() { return input.value.trim(); },\n      setValue(v) {\n        input.value = v;\n        emitChange(v.trim());\n      },\n      focus() {\n        input.focus();\n      },\n      inputElement: input\n    };\n  }\n\n  // Shared DataTable component for users\n  // Supports sorting by clicking headers\n  function DataTable({ table, onSortChange, sortBy, sortOrder }) {\n    const thead = table.querySelector('thead');\n    const tbody = table.querySelector('tbody');\n\n    function updateSortIndicators() {\n      const headers = thead.querySelectorAll('th.sortable');\n      headers.forEach(th => {\n        const key = th.getAttribute('data-sort-key');\n        th.classList.remove('asc', 'desc');\n        th.setAttribute('aria-sort', 'none');\n        if (key === sortBy) {\n          th.classList.add(sortOrder);\n          th.setAttribute('aria-sort', sortOrder === 'asc' ? 'ascending' : 'descending');\n        }\n      });\n    }\n\n    function onHeaderClick(e) {\n      const th = e.target.closest('th.sortable');\n      if (!th) return;\n      const key = th.getAttribute('data-sort-key');\n      if (!key) return;\n\n      if (key === sortBy) {\n        // Toggle order\n        sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';\n      } else {\n        sortBy = key;\n        sortOrder = 'asc';\n      }\n      updateSortIndicators();\n      onSortChange(sortBy, sortOrder);\n    }\n\n    thead.addEventListener('click', onHeaderClick);\n    thead.addEventListener('keydown', (e) => {\n      if (e.key === 'Enter' || e.key === ' ') {\n        e.preventDefault();\n        onHeaderClick(e);\n      }\n    });\n\n    updateSortIndicators();\n\n    return {\n      renderRows(users) {\n        tbody.innerHTML = '';\n        for (const user of users) {\n          const tr = document.createElement('tr');\n          const tdName = document.createElement('td');\n          tdName.textContent = user.name;\n          tdName.setAttribute('data-label', 'Name');\n          const tdEmail = document.createElement('td');\n          tdEmail.textContent = user.email;\n          tdEmail.setAttribute('data-label', 'Email');\n          const tdRole = document.createElement('td');\n          tdRole.textContent = user.role;\n          tdRole.setAttribute('data-label', 'Role');\n          tr.append(tdName, tdEmail, tdRole);\n          tbody.appendChild(tr);\n        }\n      },\n      clearRows() {\n        tbody.innerHTML = '';\n      },\n      setSort(sortKey, order) {\n        sortBy = sortKey;\n        sortOrder = order;\n        updateSortIndicators();\n      },\n      getSort() {\n        return { sortBy, sortOrder };\n      }\n    };\n  }\n\n  // Shared EmptyState component\n  function EmptyState({ container, message }) {\n    container.innerHTML = '';\n    const div = document.createElement('div');\n    div.className = 'empty';\n    div.textContent = message;\n    container.appendChild(div);\n  }\n\n  // Main app logic\n  const searchContainer = document.querySelector('.search-container');\n  const searchInputEl = document.getElementById('search-input');\n  const clearSearchButton = document.getElementById('clear-search-button');\n  const usersTable = document.getElementById('users-table');\n  const usersTbody = document.getElementById('users-tbody');\n  const statusMessage = document.getElementById('status-message');\n\n  // Parse URL search param\n  function getURLSearchParam() {\n    try {\n      const params = new URLSearchParams(window.location.search);\n      return params.get('search') || '';\n    } catch {\n      return '';\n    }\n  }\n\n  function setURLSearchParam(value) {\n    try {\n      const params = new URLSearchParams(window.location.search);\n      if (value) {\n        params.set('search', value);\n      } else {\n        params.delete('search');\n      }\n      const newUrl = window.location.pathname + '?' + params.toString();\n      // Represent URL parameter sync as explanatory text since pushState disallowed\n      statusMessage.textContent = `URL parameters would synchronize to: ${newUrl}`;\n    } catch {\n      // ignore\n    }\n  }\n\n  // Debounce helper\n  function debounce(func, wait) {\n    let timeout;\n    return function(...args) {\n      clearTimeout(timeout);\n      timeout = setTimeout(() => func.apply(this, args), wait);\n    };\n  }\n\n  // Maintain pagination 1 page, 25 per page and current sort\n  // We'll keep current sort in memory and update\n  let currentPage = 1;\n  const pageSize = 25;\n  let currentSortBy = 'name';\n  let currentSortOrder = 'asc';\n  let currentSearch = getURLSearchParam() || 'Alex';\n  let lastRequestId = 0;\n\n  // Instantiate DataTable\n  const dataTable = DataTable({\n    table: usersTable,\n    sortBy: currentSortBy,\n    sortOrder: currentSortOrder,\n    onSortChange(sortBy, sortOrder) {\n      currentSortBy = sortBy;\n      currentSortOrder = sortOrder;\n      fetchAndRender();\n    }\n  });\n\n  // Instantiate SearchInput - uses existing input element\n  let inputDebounceTimer = null;\n  function onSearchInputChange(value) {\n    if (value === currentSearch) return;\n    currentSearch = value;\n    currentPage = 1;\n    setURLSearchParam(currentSearch);\n    fetchAndRender();\n    updateClearSearchVisibility();\n  }\n\n  function updateClearSearchVisibility() {\n    clearSearchButton.hidden = !currentSearch;\n  }\n\n  searchInputEl.value = currentSearch;\n\n  // Debounce search input\n  const onSearchDebounced = debounce((e) => {\n    onSearchInputChange(e.target.value.trim());\n  }, 300);\n\n  searchInputEl.addEventListener('input', onSearchDebounced);\n\n  clearSearchButton.addEventListener('click', () => {\n    currentSearch = '';\n    searchInputEl.value = '';\n    currentPage = 1;\n    setURLSearchParam('');\n    updateClearSearchVisibility();\n    fetchAndRender();\n    searchInputEl.focus();\n  });\n\n  function updateLoadingState(isLoading) {\n    usersTable.setAttribute('aria-busy', String(isLoading));\n    if (isLoading) {\n      statusMessage.className = 'loading';\n      statusMessage.textContent = 'Loading...';\n      dataTable.clearRows();\n    }\n  }\n\n  function showError(message) {\n    statusMessage.className = 'error';\n    statusMessage.innerHTML = '';\n    const errMsg = document.createElement('div');\n    errMsg.textContent = message;\n    const retryBtn = document.createElement('button');\n    retryBtn.textContent = 'Retry';\n    retryBtn.type = 'button';\n    retryBtn.addEventListener('click', () => {\n      fetchAndRender();\n    });\n    const clearBtn = document.createElement('button');\n    clearBtn.textContent = 'Clear Search';\n    clearBtn.type = 'button';\n    clearBtn.addEventListener('click', () => {\n      currentSearch = '';\n      searchInputEl.value = '';\n      currentPage = 1;\n      setURLSearchParam('');\n      updateClearSearchVisibility();\n      fetchAndRender();\n      searchInputEl.focus();\n    });\n    statusMessage.append(errMsg, document.createElement('br'), retryBtn, clearBtn);\n  }\n\n  function showEmpty() {\n    statusMessage.className = '';\n    statusMessage.textContent = '';\n    EmptyState({ container: statusMessage, message: 'No users found matching your search.' });\n  }\n\n  // Fetch users with current state\n  function fetchAndRender() {\n    updateLoadingState(true);\n    const requestId = ++lastRequestId;\n    apiGetUsers({\n      page: currentPage,\n      pageSize,\n      sortBy: currentSortBy,\n      sortOrder: currentSortOrder,\n      search: currentSearch\n    })\n      .then(result => {\n        if (requestId !== lastRequestId) return; // Ignore stale\n        updateLoadingState(false);\n        if (result.data.length === 0) {\n          dataTable.clearRows();\n          showEmpty();\n        } else {\n          statusMessage.textContent = '';\n          dataTable.renderRows(result.data);\n        }\n      })\n      .catch(() => {\n        if (requestId !== lastRequestId) return; // Ignore stale\n        updateLoadingState(false);\n        showError('Error loading users.');\n      });\n  }\n\n  updateClearSearchVisibility();\n  fetchAndRender();\n\n})();\n</script>\n</body>\n</html></body></html>",
+    "version": 2,
+    "brief_revision": 1,
+    "usage": {
+      "input_tokens": 1076,
+      "input_tokens_details": {
+        "cache_write_tokens": 0,
+        "cached_tokens": 0,
+        "cache_write_tokens_details": {
+          "ttl_12h_tokens": 0,
+          "ttl_30m_tokens": 0
+        }
+      },
+      "output_tokens": 5133,
+      "output_tokens_details": {
+        "reasoning_tokens": 0
+      },
+      "total_tokens": 6209
+    },
+    "model": "gpt-4.1-mini",
+    "prepared_demo": true
+  }
+}
