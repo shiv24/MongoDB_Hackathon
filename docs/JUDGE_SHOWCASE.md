@@ -1,14 +1,13 @@
-# Judge showcase: pizza night → movie night
+# Judge showcase: signup → billing
 
-## Setup
-Run `python scripts/seed_events_showcase.py` once with Atlas and Voyage configured. It creates a separate Team events workspace, two demo identities, two short specs, and three shared rules. It does not pre-approve the calendar lesson or reset other data. Start the server and open the app. Identity switching is simulated for the hackathon.
+Run `python scripts/seed_software_showcase.py` once with Atlas and Voyage configured. This adds a separate Product workspace, Alice and Bob demo identities, two short software specs and three shared rules. It does not reset other workspaces or pre-approve the learning lesson. Identity switching is simulated for the hackathon.
 
-## 90-second presentation
-1. **Alice:** click Use an example request, then Create prompt. “Alice is making a pizza-night RSVP page. The brain knows the date, venue, menu and shared design rules.”
-2. **Teach:** click Use example feedback. “We forgot something useful: add every event to your calendar after RSVP.” Click Suggest a lesson, review it, choose **This project**, then Approve for future prompts. Approval does not rewrite the existing prompt.
-3. **Bob:** switch to Bob. Click Use an example request, then Create prompt. “Bob is making a movie-night page. Different teammate. Fresh session. He never mentioned a calendar.”
-4. Point to **Learned guidance used**, the Add to calendar instruction and Alice's approval. Open the shared brain to show the durable project lesson.
+## 90-second walkthrough
+1. **Alice builds a signup prompt.** Select Alice, click Use an example request, then Create prompt. “The brain starts with our requirements and engineering rules.”
+2. **Teach once.** Click Use example feedback, then Suggest a lesson. The feedback says to preserve entered values after validation errors, show an error summary and focus the first invalid field. Review the lesson, choose **This project**, then Approve for future prompts.
+3. **Bob starts fresh.** Switch to Bob, click the example request for a billing form, and create the prompt. Bob never mentions error handling.
+4. **Show the transfer.** Point to Learned guidance used and Alice's approval. “Different developer, different feature, fresh session. Bob benefits from what Alice learned.”
 
-Close: “Teach it once. Your whole team starts smarter next time.”
+Close: “Your next prompt benefits from what your teammates already figured out.”
 
-Skip website generation in a tight presentation; it is optional visual proof, not the product. Preview HTML is inert and does not store RSVPs or create working calendar downloads. If already rehearsed, show the approved lesson honestly as existing memory rather than pretending it was just learned. Allow a moment for Atlas indexing after approval.
+Keep website generation optional. A preview is not a functioning backend. The evidence is the cited lesson and its transfer, not a guarantee the model would never independently suggest similar guidance. Allow Atlas indexing time after approval. If rehearsed, disclose already-approved memory instead of pretending it was newly learned.
