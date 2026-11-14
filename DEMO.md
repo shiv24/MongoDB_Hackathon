@@ -2,7 +2,11 @@
 
 Use Alice in the Admin console workspace. The server runs at http://localhost:8018.
 
-[Open the tested, saved comparison](http://localhost:8018/#run=ccb9a762457f41b39026a2bd53fe632c&before=3134704de537471fb41c6dd666372c45).
+[Open the tested, saved comparison (backup)](http://localhost:8018/#run=ccb9a762457f41b39026a2bd53fe632c&before=3134704de537471fb41c6dd666372c45).
+
+[Start the live demo here](http://localhost:8018/#run=3134704de537471fb41c6dd666372c45). The original preview is already generated. Click **Use example feedback**, keep **This project**, then **Save feedback & rebuild**. The rehearsal purple lesson has been retired so this starts with no active purple rule from that rehearsal.
+
+For the saved backup comparison:
 
 1. Point to the original users table on the left.
 2. Read the saved guidance: use purple action buttons with white text.
@@ -10,7 +14,7 @@ Use Alice in the Admin console workspace. The server runs at http://localhost:80
 
 Say: “Our team already has months of project decisions. PromptForge turns a short request into an informed prompt. When we teach it a preference, that approved guidance becomes shared memory and steers the next result.”
 
-For a live run: close the comparison, enter feedback, choose **This project**, and press **Save feedback & rebuild**. It saves your exact feedback and opens the comparison automatically. The purple lesson is already saved from rehearsal; choose a different non-conflicting change, such as “Use Georgia for table headings in this project,” to demonstrate new learning. Explicitly approve any proposed replacement if you use the advanced lesson flow.
+
 
 The saved comparison opens without another model call. Live generation takes two provider calls, with progress shown. Previews are inert HTML/CSS with sample data, not functioning backend applications. Generated layouts can also vary between runs; point to the cited lesson and the requested colour change rather than claiming every difference was caused by memory.
 
