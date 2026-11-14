@@ -261,3 +261,30 @@ def test_other_team_token_cannot_touch_run(client):
     r = client.post("/api/agent/brief", headers=h_carol, json={"run_id": run_id, "objective": "steal", "requirements": [],
                                                                "acceptance_checks": []})
     assert r.status_code == 404
+
+
+def test_source_read_honors_personal_and_team_visibility(client, db):
+    client.post('/api/login', json={'user_id':'alice'})
+    personal = client.post('/api/projects/signup/sources', json={
+        'title':'Private', 'text':'Personal notes', 'scope':'personal'}).json()['source_id']
+    assert client.get('/api/projects/signup/sources/' + personal).status_code == 200
+    client.post('/api/login', json={'user_id':'bob'})
+    assert client.get('/api/projects/signup/sources/' + personal).status_code == 404
+    db.sources.insert_one({'_id':'team-chunk', 'source_id':'team-source', 'team_id':'team_a',
+                          'project_id':'another-project', 'scope':'team', 'title':'Shared',
+                          'revision':1, 'chunk_index':0, 'text':'Team convention'})
+    response = client.get('/api/projects/signup/sources/team-source')
+    assert response.status_code == 200
+    assert response.json()['text'] == 'Team convention'
+
+
+def test_export_rechecks_source_visibility(client, db):
+    from app.repo import runs
+    from conftest import BOB
+    run = runs.create(BOB, 'signup', 'Build', status='draft', intent={'feature':'Build'},
+                      brief={'objective':'Build', 'requirements':[{'text':'Use spec','sources':['S1']}],
+                             'open_questions':[]},
+                      provenance=[{'key':'S1','type':'source','id':'spec','revision':1}])
+    db.sources.update_one({'source_id':'spec'}, {'$set':{'scope':'personal','owner_id':'alice'}})
+    client.post('/api/login', json={'user_id':'bob'})
+    assert client.get('/api/runs/' + run['_id'] + '/export').status_code == 409

@@ -1,3 +1,4 @@
+import {previewDocument} from './preview.mjs';
 // PromptForge UI: type or dictate a request -> grounded prompt -> generated artifact.
 // Server text is inserted with textContent only.
 
@@ -5,7 +6,7 @@
 const $ = (id) => document.getElementById(id);
 const DEFAULT_USER_ID = "console-alice";
 const DEFAULT_PROJECT_ID = "admin-console";
-const state = { me: null, projectId: null, run: null, context: null, previewing: false, feedbackRunId: null, baseline: null };
+const state = { me: null, projectId: null, run: null, context: null, building: false, previewing: false, feedbackRunId: null, baseline: null };
 
 // ---------- helpers ----------
 async function api(path, opts = {}) {
@@ -111,7 +112,7 @@ $('lesson-example').addEventListener('click', () => {
   $('feedback-card').scrollIntoView({behavior:'smooth',block:'center'}); $('feedback-text').focus();
 });
 async function openRun(id) {
-  if (state.previewing) return;
+  if (state.previewing || state.building) return;
   state.run = await api(`/runs/${id}`);
   $('type-input').value = state.run.request;
   renderRun(); renderContext();
@@ -126,12 +127,28 @@ async function submitRequest(clarification = '', lessonIds = []) {
   const request = clarification && state.run ? state.run.request : $('type-input').value.trim();
   if (!request) throw new Error('Describe what you want built.');
   const answers = clarification ? (state.run?.clarification_text || '') + '\n' + clarification : '';
+  if (state.building || state.previewing) throw new Error('Wait for the current build to finish.');
+  state.building = true;
+  $('session-user').disabled = true;
+  $('remember-rebuild').disabled = true;
+  $('suggest-lesson').disabled = true;
   progress('1 of 2 · Writing your prompt using project memory');
-  state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers, lesson_ids:lessonIds}});
-  renderRun();
-  history.replaceState(null, '', `#run=${state.run._id}`);
-  await Promise.all([generatePreview(), loadContext()]);
-  $('preview-card').scrollIntoView({behavior:'smooth',block:'start'});
+  try {
+    state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers, lesson_ids:lessonIds}});
+    renderRun();
+    history.replaceState(null, '', `#run=${state.run._id}`);
+    await generatePreview();
+    try { await loadContext(); } catch { toast('Preview ready. Project memory list could not refresh.'); }
+    $('preview-card').scrollIntoView({behavior:'smooth',block:'start'});
+  } finally {
+    state.building = false;
+    $('send-btn').disabled = false;
+    $('session-user').disabled = false;
+    $('remember-rebuild').disabled = false;
+    $('suggest-lesson').disabled = false;
+    stopProgress();
+    renderRun();
+  }
 }
 function tell(text) { busy($('send-btn'), 'Updating…', () => submitRequest(text)); }
 $('send-btn').addEventListener('click', e => busy(e.currentTarget, 'Building…', async () => {
@@ -172,6 +189,8 @@ async function generatePreview() {
   if (!state.run?._id || state.previewing) return;
   if (!$('save-brief-btn').classList.contains('hidden')) throw new Error('Save your edits before generating a preview.');
   state.previewing = true;
+  $('session-user').disabled = true;
+  show('request-error', false);
   progress('2 of 2 · Generating your visual preview');
   $('send-btn').disabled = true;
   renderRun();
@@ -179,12 +198,13 @@ async function generatePreview() {
     state.run = await api(`/build/${state.run._id}/preview`, { method: 'POST' });
   } catch (err) {
     state.run = await api(`/runs/${state.run._id}`);
-    $('request-error').textContent = `Your prompt is saved, but the preview failed: ${err.message}. Open the prompt below and press Preview website to retry.`; show('request-error');
+    $('request-error').textContent = `Your prompt is saved, but the preview failed: ${err.message}. Press Retry preview below; your prompt is already saved.`; show('request-error');
     throw err;
   } finally {
     stopProgress();
     state.previewing = false;
-    $('send-btn').disabled = false;
+    $('send-btn').disabled = state.building;
+    $('session-user').disabled = state.building;
     renderRun();
   }
 }
@@ -209,8 +229,8 @@ $('compare-preview').addEventListener('click', () => {
   if (!state.baseline?.artifact || !state.run?.artifact) return;
   const before = state.baseline, after = state.run;
   history.replaceState(null, '', `#run=${after._id}&before=${before._id}`);
-  $('before-frame').srcdoc = before.artifact.html;
-  $('after-frame').srcdoc = after.artifact.html;
+  $('before-frame').srcdoc = previewDocument(before.artifact);
+  $('after-frame').srcdoc = previewDocument(after.artifact);
   $('compare-meta').textContent = `${before.request === after.request ? 'Same request' : 'Different requests'} · Before: ${before.artifact.model} · After: ${after.artifact.model}`;
   const used = usedIds();
   const beforeKeys = new Set(['requirements','current_decisions','implementation_context','preferences','acceptance_checks','open_questions'].flatMap(k => (before.brief[k] || []).flatMap(i => i.sources || [])));
@@ -219,6 +239,7 @@ $('compare-preview').addEventListener('click', () => {
   $('compare-learning').textContent = learned.length ? 'New learned guidance: ' + learned.map(e => e.text).join(' ') : 'No newly cited lesson compared with the before version. Check approval, relevance and indexing before presenting this as a memory-driven change.';
   $('compare-dialog').showModal();
 });
+$('retry-preview').addEventListener('click', e => busy(e.currentTarget, 'Retrying…', generatePreview));
 $('generate-btn').addEventListener('click', e => busy(e.target, 'Generating preview…', generatePreview));
 
 // ---------- project context sidebar ----------
@@ -320,20 +341,22 @@ function renderRun() {
   const hasBrief = !!r?.brief;
   show("brief-card", hasBrief);
   const hasPreview = !!r?.artifact && r.artifact.brief_revision === r.brief_revision && r.status !== 'stale';
-  show("feedback-card", hasPreview);
+  show("feedback-card", hasPreview && !state.building && !state.previewing);
   if (hasBrief && state.feedbackRunId !== r._id) {
     state.feedbackRunId = r._id;
     $("feedback-text").value = "";
     $("feedback-status").textContent = "";
     $("feedback-lesson").replaceChildren();
   }
-  show('preview-card', state.previewing || hasPreview);
+  show('preview-card', hasBrief || state.previewing || hasPreview);
+  show('retry-preview', hasBrief && !hasPreview && !state.previewing && !state.building);
+  $('generate-btn').disabled = state.building || state.previewing;
   $('pin-preview').disabled = !hasPreview || state.previewing;
   $('compare-preview').disabled = !hasPreview || !state.baseline || state.baseline._id === r?._id;
   $('baseline-status').textContent = state.baseline ? 'Before version kept for comparison.' : 'Keep the first version before teaching a lesson.';
   $('preview-status').textContent = state.previewing ? 'Building preview…' : hasPreview ? 'Preview ready' : '';
-  if (hasPreview) $('preview-frame').srcdoc = r.artifact.html;
-  else if (!state.previewing) $('preview-frame').srcdoc = '';
+  const previewHtml = hasPreview ? previewDocument(r.artifact) : '';
+  if ($('preview-frame').srcdoc !== previewHtml) $('preview-frame').srcdoc = previewHtml;
   show('handoff', false);
   if (!hasBrief) return;
   $("run-status").replaceChildren(chip(r.status));
@@ -423,6 +446,7 @@ async function submitFeedback() {
     show('feedback-error'); $('feedback-text').focus(); return;
   }
   if (!state.run?.brief) { $('feedback-error').textContent = 'Build a preview first.'; show('feedback-error'); return; }
+  if (state.building || state.previewing || $('send-btn').disabled) { toast('Wait for the current build to finish.'); return; }
   const runId = state.run._id;
   $('remember-rebuild').disabled = true; $('send-btn').disabled = true; $('session-user').disabled = true;
   $('feedback-status').textContent = 'Reading your feedback and preparing a lesson…';
@@ -440,7 +464,7 @@ async function submitFeedback() {
 }
 $('remember-rebuild').addEventListener('click', e => busy(e.currentTarget, 'Remembering and rebuilding…', async () => {
   const text = $('feedback-text').value.trim();
-  if (!text) throw new Error('Tell us what to change first.');
+  if (!text) { $('feedback-error').textContent = 'Type one change, or click Use example feedback.'; show('feedback-error'); $('feedback-text').focus(); return; }
   if (state.previewing || $('send-btn').disabled) throw new Error('Wait for the current build to finish.');
   const previous = structuredClone(state.run);
   const chosenScope = $('feedback-scope').value;
@@ -458,7 +482,7 @@ $('remember-rebuild').addEventListener('click', e => busy(e.currentTarget, 'Reme
     toast('Guidance saved. Rebuilding the same request…');
     await submitRequest('', [result.proposed._id]);
     if (state.run?.artifact) $('compare-preview').click();
-  } catch (err) { $('feedback-error').textContent = (remembered ? 'Your guidance was saved, but rebuilding failed. ' : '') + err.message; show('feedback-error'); }
+  } catch (err) { $('feedback-error').textContent = (remembered ? 'Your guidance was saved, but rebuilding failed. ' : '') + err.message; show('feedback-error'); $('request-error').textContent = $('feedback-error').textContent; show('request-error'); }
   finally { stopProgress(); $('send-btn').disabled = false; $('session-user').disabled = false; }
 }));
 $('suggest-lesson').addEventListener('click', e => busy(e.currentTarget, 'Preparing lesson…', submitFeedback));
@@ -491,13 +515,28 @@ function renderFeedbackLesson(result) {
         box.replaceChildren(el('div', {class:'lesson-success'},
           el('strong', {}, 'Approved for future relevant prompts'),
           el('p', {}, text.value.trim()),
-          el('p', {class:'hint'}, 'This does not rewrite the current prompt. Create a new request; when this lesson is relevant, its citation will appear under “Learned guidance used”. Newly saved lessons may need a moment to become searchable.'),
-          el('button', {class:'secondary',type:'button',onclick:() => { $('type-input').value = state.baseline?.request || state.run.request; $('request-card').scrollIntoView({behavior:'smooth',block:'center'}); $('type-input').focus(); }}, 'Use the same request again')));
+          el('p', {class:'hint'}, 'Your current preview is unchanged. Rebuild the same request to apply this approved lesson now.'),
+          el('button', {class:'secondary',type:'button',onclick:event => busy(event.currentTarget, 'Rebuilding…', async () => {
+            state.baseline = structuredClone(state.run);
+            sessionStorage.setItem(`pf-before-${state.me.user_id}`, state.run._id);
+            $('type-input').value = state.run.request;
+            await submitRequest('', [lesson._id]);
+            if (state.run?.artifact) $('compare-preview').click();
+          })}, 'Rebuild with this lesson')));
         $("feedback-status").textContent = ({project:"Lesson saved for this project.",team:"Lesson saved for your team.",personal:"Lesson saved for you."})[scope];
         await loadContext();
       }) }, "Approve for future prompts"))));
 }
-window.addEventListener('hashchange', () => { const match = location.hash.match(/^#run=([a-f0-9]+)$/); if (state.me && match && match[1] !== state.run?._id) openRun(match[1]).catch(e => toast(e.message)); });
+window.addEventListener('hashchange', async () => {
+  const params = new URLSearchParams(location.hash.slice(1));
+  const id = params.get('run'), before = params.get('before');
+  if (!state.me || !id || !/^[a-f0-9]+$/.test(id) || state.building || state.previewing) return;
+  try {
+    if (before && /^[a-f0-9]+$/.test(before)) state.baseline = await api(`/runs/${before}`);
+    await openRun(id);
+    if (before && state.baseline?.artifact && state.run?.artifact) $('compare-preview').click();
+  } catch (err) { toast(err.message); }
+});
 init().catch((e) => {
   $("active-context").textContent = "Workspace unavailable";
   toast(e.message);

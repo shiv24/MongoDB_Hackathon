@@ -112,7 +112,7 @@ The main screen is a place to delegate work and review the result.
 - **Project setup:** Supply a spec, relevant repository snapshot, and explicit decisions; review their source, owner, and scope. These establish the starting context before the first request.
 - **Request:** Choose a project, speak or type a request, and review the transcript.
 - **Context:** Inspect the selected sources, decisions, and preferences, with their attribution and scope.
-- **Sources:** Add text, PDF, or UTF-8 text files with Company, Project, or User (Personal) visibility. Alice is an admin in the demo; members can publish personal sources, publishers can also publish project sources, and admins can publish at all three levels.
+- **Sources:** Add text, PDF, or UTF-8 text files with Company, Project, or User (Personal) visibility. The Admin console demo uses Alice (publisher) and Bob (member); members can publish personal sources, publishers can also publish project sources, and admins can publish at all three levels.
 - **Brief:** PromptForge uses explicit assumptions instead of blocking questions; review the collapsible prompt if desired.
 - **Result:** Inspect the generated artifact and validation evidence. A failed or unrun check remains visible.
 - **Feedback:** Explain a correction and decide whether the proposed lesson should be remembered.
@@ -173,11 +173,13 @@ Add `ELEVENLABS_API_KEY` for microphone dictation. `ELEVENLABS_STT_MODEL` defaul
 python scripts/doctor.py
 python scripts/doctor.py --live
 python scripts/setup_atlas.py
-python scripts/seed.py
+python scripts/seed_software_showcase.py
 uvicorn app.main:app --reload --app-dir backend
 ```
 
-Open http://localhost:8000, type a request, and click **Build artifact**. PromptForge chooses reasonable defaults, shows the artifact first, and keeps the grounded prompt collapsible. Record outcomes and approve suggested lessons explicitly.
+The showcase seed is additive and safe to rerun; it creates the Admin console sources and decisions without pre-approving lessons.
+
+Open http://localhost:8000, type a request, and click **Build preview**. PromptForge chooses reasonable defaults, shows the artifact first, and keeps the grounded prompt collapsible. Record outcomes and approve suggested lessons explicitly.
 
 `doctor --live` tests connectivity and model access; its Voyage embedding probe consumes a small number of tokens. It does not prove the full workflow. Setup must finish with all three vector indexes READY. Allow time for freshly seeded data to be indexed. Atlas also needs your client IP allowed and a database user with appropriate permissions.
 
@@ -223,7 +225,7 @@ node --check frontend/app.js
 pytest backend/tests/test_isolation.py -q
 ```
 
-Current offline result: **40 passed, 3 live Atlas tests skipped**. A headless browser confirmed Alice sees the three source visibility choices; perform the full manual workflow below after setup.
+Current offline result: **49 backend tests passed, 3 live Atlas tests skipped; 4 frontend sandbox tests passed**. Run the frontend tests with `node --test frontend/tests/preview.test.mjs`. A headless browser confirmed Alice sees the three source visibility choices; perform the full manual workflow below after setup.
 
 Offline tests cover API flow, scopes, lifecycle, private runs, stale/expired memory, explicit approval boundaries, direct generation with mocked providers, preview caching and sanitization. Live provider calls and real browser microphone/agent behavior still require credentials and a live smoke test.
 

@@ -16,15 +16,15 @@ from conftest import ALICE, BOB
 def test_demo_workspace_bootstrap_is_idempotent(db):
     first = ensure_demo_workspace()
     assert first == {"user_created": True, "project_created": True}
-    assert db.users.find_one({"_id": "alice"}) == DEFAULT_USER
-    assert db.projects.find_one({"_id": "lumen-signup"}) == DEFAULT_PROJECT
+    assert db.users.find_one({"_id": "console-alice"}) == DEFAULT_USER
+    assert db.projects.find_one({"_id": "admin-console"}) == DEFAULT_PROJECT
 
-    db.users.update_one({"_id": "alice"}, {"$set": {"name": "Existing Alice", "role": "member"}})
-    db.sources.insert_one({"_id": "old-source", "team_id": "team_a", "project_id": "lumen-signup"})
+    db.users.update_one({"_id": "console-alice"}, {"$set": {"name": "Existing Alice", "role": "member"}})
+    db.sources.insert_one({"_id": "old-source", "team_id": "team_a", "project_id": "admin-console"})
     second = ensure_demo_workspace()
     assert second == {"user_created": False, "project_created": False}
-    assert db.users.find_one({"_id": "alice"})["name"] == "Existing Alice"
-    assert db.users.find_one({"_id": "alice"})["role"] == "admin"
+    assert db.users.find_one({"_id": "console-alice"})["name"] == "Existing Alice"
+    assert db.users.find_one({"_id": "console-alice"})["role"] == "member"
     assert db.sources.find_one({"_id": "old-source"})["scope"] == "project"
 
 

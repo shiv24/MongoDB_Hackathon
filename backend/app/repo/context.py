@@ -56,6 +56,12 @@ def latest_source_revision(team_id: str, source_id: str) -> int | None:
     return d["revision"] if d else None
 
 
+def visible_source_revision(session: dict, project_id: str, source_id: str) -> int | None:
+    query = {'$and': [scope.source_filter(session, project_id), {'source_id': source_id}]}
+    doc = get_db().sources.find_one(query, sort=[('revision', -1)])
+    return doc['revision'] if doc else None
+
+
 def search_sources(session: dict, project_id: str, query_embedding: list[float],
                    limit: int = config.RETRIEVE_LIMIT) -> list[dict]:
     hits = vector_search(get_db().sources, "sources_scoped_vector", query_embedding,

@@ -4,17 +4,17 @@ from app.db import get_db
 
 
 DEFAULT_USER = {
-    "_id": "alice",
+    "_id": "console-alice",
     "name": "Alice",
-    "team_id": "team_a",
-    "project_ids": ["lumen-signup"],
-    "role": "admin",
+    "team_id": "console-team",
+    "project_ids": ["admin-console"],
+    "role": "publisher",
 }
 
 DEFAULT_PROJECT = {
-    "_id": "lumen-signup",
-    "team_id": "team_a",
-    "name": "Lumen web app: account signup",
+    "_id": "admin-console",
+    "team_id": "console-team",
+    "name": "Admin console",
 }
 
 
@@ -22,13 +22,12 @@ def ensure_demo_workspace() -> dict[str, bool]:
     """Create the fixed demo identity and project only when they do not exist."""
     db = get_db()
     user = db.users.update_one(
-        {"_id": DEFAULT_USER["_id"], "team_id": DEFAULT_USER["team_id"]},
-        {"$setOnInsert": {k: v for k, v in DEFAULT_USER.items() if k != "role"},
-         "$set": {"role": DEFAULT_USER["role"]}},
+        {"_id": DEFAULT_USER["_id"]},
+        {"$setOnInsert": DEFAULT_USER},
         upsert=True,
     )
-    db.users.update_one({'_id': 'bob'}, {'$setOnInsert': {
-        '_id': 'bob', 'name': 'Bob', 'team_id': DEFAULT_USER['team_id'],
+    db.users.update_one({'_id': 'console-bob'}, {'$setOnInsert': {
+        '_id': 'console-bob', 'name': 'Bob', 'team_id': DEFAULT_USER['team_id'],
         'project_ids': DEFAULT_USER['project_ids'], 'role': 'member'}}, upsert=True)
     project = db.projects.update_one(
         {"_id": DEFAULT_PROJECT["_id"]},

@@ -27,7 +27,7 @@ def recheck(session: dict, run: dict) -> list[dict]:
                 changes.append({"key": e["key"], "type": "decision", "id": e["id"], "change": "superseded",
                                 "replacement": cur.get("superseded_by")})
         elif e["type"] == "source":
-            latest = context.latest_source_revision(session["team_id"], e["id"])
+            latest = context.visible_source_revision(session, run["project_id"], e["id"])
             if latest != e["revision"]:
                 changes.append({"key": e["key"], "type": "source", "id": e["id"],
                                 "change": f"revision {e['revision']} -> {latest}"})

@@ -16,13 +16,17 @@ Say: “Our team already has months of project decisions. PromptForge turns a sh
 
 
 
-The saved comparison opens without another model call. Live generation takes two provider calls, with progress shown. Previews are inert HTML/CSS with sample data, not functioning backend applications. Generated layouts can also vary between runs; point to the cited lesson and the requested colour change rather than claiming every difference was caused by memory.
+The saved comparison opens without another model call. Live generation takes two provider calls, with progress shown. Saved rehearsal previews are static HTML/CSS. Newly generated previews can include sandboxed client-side interactions over sample data; neither is a connected backend application. Generated layouts can also vary between runs; point to the cited lesson and the requested colour change rather than claiming every difference was caused by memory.
 
 ## Verified
 
 - Real Atlas/Voyage/OpenAI flow: request → brief → preview → project feedback approval → new brief → new preview.
 - The new approved lesson is present in provenance and purple appears in the brief and generated button CSS.
 - Same request and generation model for both saved runs; visually inspected in Chrome.
-- 44 offline tests pass; 3 Atlas integration tests skipped in the offline suite.
+- 49 offline tests pass; 3 Atlas integration tests skipped in the offline suite.
 
 Freshly approved feedback is explicitly included in its immediate rebuild after scope/status checks, so it does not depend on vector-index synchronization. Other requests continue to retrieve applicable approved memory normally.
+
+## Merged interactive preview check
+
+[Open the tested interactive users table](http://localhost:8018/#run=02aaa2ccc3514f31ae9eb9b94d4762ae). Type Alex to see four matches and page 1 of 1, then Clear search to return to the full sample dataset. This is a separate verification run, not the original before/after comparison. Sandbox URL updates are intentionally ignored; this prototype does not change the browser URL.
