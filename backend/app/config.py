@@ -36,6 +36,8 @@ TEAM_PUBLISH_ROLES = ("publisher", "admin")
 RETRIEVE_LIMIT = 6               # per record type (source chunks, decisions, lessons)
 NUM_CANDIDATES = 100
 CHUNK_CHARS = 1200               # source chunk size
+MAX_SOURCE_FILE_BYTES = 10 * 1024 * 1024
+MAX_PDF_PAGES = 200
 
 # Learning
 DUPLICATE_SCORE = 0.92           # vectorSearchScore (cosine, normalised 0..1) at or above -> duplicate

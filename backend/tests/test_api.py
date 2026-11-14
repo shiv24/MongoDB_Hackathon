@@ -7,7 +7,7 @@ from app import config
 from app.agent import embed
 from app.main import app
 from app.repo import context, lessons
-from app.routes import voice
+from app.routes import projects, voice
 
 SPEC = "Required fields: work email, full name, password."
 
@@ -54,6 +54,40 @@ def _voice_session(client, user="alice", project="signup"):
     client.post("/api/login", json={"user_id": user})
     s = client.post("/api/voice/session", json={"project_id": project}).json()
     return s, {"X-PF-Session": s["dynamic_variables"]["secret__pf_token"]}
+
+
+def test_file_upload_uses_existing_scoped_ingestion(client, db, monkeypatch):
+    class Page:
+        def extract_text(self):
+            return "PDF requirement: the signup form must work with a keyboard."
+
+    class Reader:
+        is_encrypted = False
+        pages = [Page()]
+
+        def __init__(self, _stream):
+            pass
+
+    monkeypatch.setattr(projects, "PdfReader", Reader)
+    client.post("/api/login", json={"user_id": "alice"})
+    response = client.post("/api/projects/signup/sources/file", data={"title": "", "text": "Uploaded by Alice."},
+                           files={"file": ("accessibility.pdf", b"%PDF-1.7 test", "application/pdf")})
+
+    assert response.status_code == 200
+    assert response.json()["title"] == "accessibility"
+    saved = db.sources.find_one({"project_id": "signup", "title": "accessibility"})
+    assert saved["kind"] == "pdf" and "keyboard" in saved["text"] and "Uploaded by Alice" in saved["text"]
+
+    text_response = client.post("/api/projects/signup/sources/file", data={"title": "Plain notes"},
+                                files={"file": ("notes.txt", b"Use the shared FormField component.", "text/plain")})
+    assert text_response.status_code == 200
+    text_source = db.sources.find_one({"project_id": "signup", "title": "Plain notes"})
+    assert text_source["kind"] == "text" and "FormField" in text_source["text"]
+
+    client.post("/api/login", json={"user_id": "carol"})
+    forbidden = client.post("/api/projects/signup/sources/file",
+                            files={"file": ("other.pdf", b"%PDF-1.7 test", "application/pdf")})
+    assert forbidden.status_code == 403
 
 
 def test_tools_reject_missing_or_bad_token(client):

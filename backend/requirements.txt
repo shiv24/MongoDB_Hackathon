@@ -7,8 +7,9 @@ httpx
 python-dotenv
 itsdangerous
 pydantic
+python-multipart
+pypdf
 pytest
 mongomock
 openai>=1.68
-python-multipart
 beautifulsoup4

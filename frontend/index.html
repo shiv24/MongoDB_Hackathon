@@ -10,12 +10,7 @@
   <header class="topbar">
     <div class="brand">PromptForge</div>
     <div class="topbar-controls">
-      <label>User
-        <select id="user-select"><option value="">Choose a demo user…</option></select>
-      </label>
-      <label>Project
-        <select id="project-select" disabled></select>
-      </label>
+      <span id="active-context" class="muted">Loading workspace…</span>
     </div>
   </header>
 
@@ -88,24 +83,12 @@
         <ul id="sources" class="items"></ul>
         <details>
           <summary>Add a source</summary>
-          <input id="src-title" placeholder="Title (same title = new revision)">
+          <input id="src-title" placeholder="Title (optional; defaults to filename)">
           <textarea id="src-text" rows="4" placeholder="Paste a spec or repo notes"></textarea>
+          <input id="src-file" type="file" accept=".pdf,.txt,application/pdf,text/plain" aria-label="Upload a PDF or text source">
+          <p class="hint">PDF or UTF-8 text file, maximum 10 MB.</p>
           <button id="src-btn" class="secondary" type="button">Add source</button>
         </details>
-        <h3>Team decisions</h3>
-        <ul id="decisions" class="items"></ul>
-        <details>
-          <summary>Record a decision</summary>
-          <textarea id="dec-text" rows="2" placeholder="The signup flow uses the existing identity service."></textarea>
-          <button id="dec-btn" class="secondary" type="button">Add decision</button>
-        </details>
-        <h3>Lessons</h3>
-        <ul id="lessons" class="items"></ul>
-      </section>
-      <section class="card">
-        <h2>Memory events</h2>
-        <p class="hint">Select "history" on a decision or lesson.</p>
-        <ul id="history" class="items small"></ul>
       </section>
     </aside>
   </div>

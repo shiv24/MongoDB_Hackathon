@@ -3,13 +3,18 @@
 
 
 const $ = (id) => document.getElementById(id);
+const DEFAULT_USER_ID = "alice";
+const DEFAULT_PROJECT_ID = "lumen-signup";
 const state = { me: null, projectId: null, run: null, context: null, conversation: null, agentSessionId: null, poll: null };
 
 // ---------- helpers ----------
 async function api(path, opts = {}) {
+  const isFormData = opts.body instanceof FormData;
+  const headers = { ...(opts.headers || {}) };
+  if (opts.body && !isFormData) headers["Content-Type"] = "application/json";
   const res = await fetch(`/api${path}`, {
-    headers: opts.body ? { "Content-Type": "application/json" } : {}, credentials: "same-origin", ...opts,
-    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    ...opts, headers, credentials: "same-origin",
+    body: opts.body ? (isFormData ? opts.body : JSON.stringify(opts.body)) : undefined,
   });
   const type = res.headers.get("content-type") || "";
   const data = type.includes("json") ? await res.json() : await res.text();
@@ -38,34 +43,18 @@ async function busy(btn, label, fn) {
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
 const chip = (text) => el("span", { class: `chip ${text}` }, String(text).replace(/_/g, " "));
 
-// ---------- login and projects ----------
+// ---------- fixed demo identity and project ----------
 async function init() {
-  const users = await api("/users");
-  for (const u of users) $("user-select").append(el("option", { value: u._id }, u.name));
-  try { state.me = await api("/me"); $("user-select").value = state.me.user_id; await loadProjects(); } catch { /* not logged in */ }
-}
-
-$("user-select").addEventListener("change", async (e) => {
-  if (!e.target.value) return;
-  await endConversation();
-  state.me = await api("/login", { method: "POST", body: { user_id: e.target.value } });
-  state.run = null; renderRun();
-  await loadProjects();
-  toast(`Signed in as ${state.me.name}. Team and projects come from the server, not the browser.`);
-});
-
-async function loadProjects() {
-  const sel = $("project-select"); sel.replaceChildren(); sel.disabled = false;
+  state.me = await api("/login", { method: "POST", body: { user_id: DEFAULT_USER_ID } });
   const projects = await api("/projects");
-  for (const p of projects) sel.append(el("option", { value: p._id }, p.name));
-  state.projectId = projects[0]?._id || null;
+  const project = projects.find((p) => p._id === DEFAULT_PROJECT_ID);
+  if (!project) throw new Error(`Default project ${DEFAULT_PROJECT_ID} is not available to ${DEFAULT_USER_ID}. Seed the demo data first.`);
+  state.projectId = project._id;
+  $("active-context").textContent = `${state.me.name} · ${project.name}`;
   await loadContext();
 }
 
-$("project-select").addEventListener("change", async (e) => {
-  await endConversation(); state.projectId = e.target.value; state.run = null; renderRun(); await loadContext();
-});
-
+// ---------- conversation with the ElevenLabs agent ----------
 function addLine(role, text) {
   show("transcript");
   const list = $("transcript");
@@ -74,7 +63,7 @@ function addLine(role, text) {
 }
 
 async function startConversation(textOnly) {
-  if (!state.projectId) throw new Error("Choose a user and project first.");
+  if (!state.projectId) throw new Error("The default workspace is still loading. Try again in a moment.");
   if (state.conversation) return;
   const { Conversation } = await import("https://cdn.jsdelivr.net/npm/@elevenlabs/client@1.32.1/+esm");
   const s = await api("/voice/session", { method: "POST", body: { project_id: state.projectId } });
@@ -133,7 +122,7 @@ async function endConversation() {
 }
 async function submitRequest(clarification = '') {
   if(state.conversation) { tellAgent(clarification || $('type-input').value); return; }
-  if (!state.projectId) throw new Error('Choose a user and project first.');
+  if (!state.projectId) throw new Error('The default workspace is still loading. Try again in a moment.');
   const request = clarification && state.run ? state.run.request : $('type-input').value.trim();
   if (!request) throw new Error('Describe what you want built.');
   const answers = clarification ? (state.run?.clarification_text || '') + '\n' + clarification : '';
@@ -195,66 +184,28 @@ function renderContext() {
   $("sources").replaceChildren(...c.sources.map((s) => el("li", { class: used.has(s.source_id) ? "used" : "" },
     el("span", { class: "text" }, s.title), el("span", { class: "meta" }, `${s.kind} · revision ${s.revision} · added by ${s.added_by}`))));
   if (!c.sources.length) $("sources").append(el("li", { class: "muted" }, "No sources yet."));
-
-  $("decisions").replaceChildren(...c.decisions.map((d) => el("li", { class: `${d.status} ${used.has(d._id) ? "used" : ""}` },
-    el("span", { class: "text" }, d.text),
-    el("span", { class: "meta" }, chip(d.status), ` rev ${d.revision} · owner ${d.owner_id} `,
-      d.status === "current" ? el("button", { class: "link", onclick: () => correctDecision(d) }, "correct") : null,
-      el("button", { class: "link", onclick: () => showHistory(`/projects/decisions/${d._id}/history`) }, "history")))));
-
-  $("lessons").replaceChildren(...c.lessons.map((l) => el("li", { class: `${l.status} ${used.has(l._id) ? "used" : ""}` },
-    el("span", { class: "text" }, l.text),
-    el("span", { class: "meta" }, chip(l.status), ` ${l.scope} · rev ${l.revision} · by ${l.owner_id}${l.approved_by ? `, approved by ${l.approved_by}` : ""} `,
-      l.status === "proposed" ? el("button", {class:"link", onclick:()=>renderProposal({proposed:l, scopes_allowed:state.me.role === "member" ? ["personal","project"] : ["personal","project","team"]})}, "review proposal") : null,
-      l.status === "approved" ? [
-        el("button", { class: "link", onclick: () => lessonAction(l, "correct") }, "correct"),
-        el("button", { class: "link", onclick: () => lessonAction(l, "retire") }, "retire"),
-        el("button", { class: "link", onclick: () => lessonAction(l, "forget") }, "forget")] : null,
-      el("button", { class: "link", onclick: () => showHistory(`/lessons/${l._id}/history`) }, "history")))));
-  if (!c.lessons.length) $("lessons").append(el("li", { class: "muted" }, "No lessons yet."));
-}
-
-async function showHistory(path) {
-  const events = await api(path);
-  $("history").replaceChildren(...events.map((e) => el("li", {},
-    el("strong", {}, e.event), ` by ${e.actor} (${e.cause}) `, el("span", { class: "meta" }, new Date(e.at).toLocaleString()))));
-}
-
-async function correctDecision(d) {
-  const text = prompt("Corrected decision (creates a new revision; the old one is superseded):", d.text);
-  if (!text || text === d.text) return;
-  try { await api(`/projects/decisions/${d._id}/supersede`, { method: "POST", body: { text } }); toast("Decision superseded."); await loadContext(); }
-  catch (e) { toast(e.message); }
-}
-
-async function lessonAction(l, action) {
-  try {
-    if (action === "correct") {
-      const text = prompt("Corrected lesson (new revision):", l.text);
-      if (!text || text === l.text) return;
-      await api(`/lessons/${l._id}/correct`, { method: "POST", body: { text } });
-    } else if (action === "retire") {
-      if (!confirm("Retire this lesson? It will no longer shape new briefs.")) return;
-      await api(`/lessons/${l._id}/retire`, { method: "POST" });
-    } else {
-      if (!confirm("Forget this lesson? It is removed from future use and briefs that cited it are marked stale. Text already in exported briefs is not erased.")) return;
-      const r = await api(`/lessons/${l._id}`, { method: "DELETE" });
-      toast(`Forgotten. ${r.runs_marked_stale} run(s) marked stale.`);
-    }
-    await loadContext();
-    if (state.run) { state.run = await api(`/runs/${state.run._id}`); renderRun(); }
-  } catch (e) { toast(e.message); }
 }
 
 $("src-btn").addEventListener("click", (e) => busy(e.target, "Adding…", async () => {
-  await api(`/projects/${state.projectId}/sources`, { method: "POST", body: { title: $("src-title").value, text: $("src-text").value } });
-  $("src-title").value = ""; $("src-text").value = ""; await loadContext();
+  const title = $("src-title").value.trim();
+  const text = $("src-text").value.trim();
+  const file = $("src-file").files[0];
+  if (!file && !text) throw new Error("Paste source text or choose a PDF or text file.");
+  if (file) {
+    const body = new FormData();
+    body.append("title", title);
+    body.append("text", text);
+    body.append("file", file);
+    await api(`/projects/${state.projectId}/sources/file`, { method: "POST", body });
+  } else {
+    await api(`/projects/${state.projectId}/sources`, {
+      method: "POST", body: { title: title || "Pasted source", text },
+    });
+  }
+  $("src-title").value = ""; $("src-text").value = ""; $("src-file").value = "";
+  await loadContext();
+  toast("Source added to project context.");
 }));
-$("dec-btn").addEventListener("click", (e) => busy(e.target, "Adding…", async () => {
-  await api(`/projects/${state.projectId}/decisions`, { method: "POST", body: { text: $("dec-text").value } });
-  $("dec-text").value = ""; await loadContext();
-}));
-
 // ---------- brief ----------
 const SECTIONS = [["requirements", "Requirements"], ["current_decisions", "Current decisions"], ["implementation_context", "Implementation context"],
   ["preferences", "Preferences"], ["acceptance_checks", "Acceptance checks"]];
@@ -383,6 +334,9 @@ function renderProposal(r) {
 }
 
 
-
-setInterval(()=>{if(state.conversation) loadContext().catch(()=>{});},5000);
-init().catch((e) => toast(e.message));
+// lessons approved by voice show up in the sidebar
+setInterval(() => { if (state.conversation) loadContext().catch(() => {}); }, 5000);
+init().catch((e) => {
+  $("active-context").textContent = "Workspace unavailable";
+  toast(e.message);
+});

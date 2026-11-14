@@ -1,7 +1,13 @@
-from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from io import BytesIO
+from pathlib import Path
 
+from fastapi import APIRouter, File, Form, Request, UploadFile
+from pydantic import BaseModel
+from pypdf import PdfReader
+
+from app import config
 from app.repo import context, events, lessons, runs, users
+from app.repo import scope
 from app.session import current
 
 router = APIRouter(prefix="/projects")
@@ -36,6 +42,51 @@ def get_context(request: Request, project_id: str):
 @router.post("/{project_id}/sources")
 def add_source(request: Request, project_id: str, body: SourceIn):
     return context.add_source(current(request), project_id, body.title, body.text, body.kind)
+
+
+@router.post("/{project_id}/sources/file")
+async def add_source_file(request: Request, project_id: str, file: UploadFile = File(...),
+                          title: str = Form(""), text: str = Form("")):
+    session = current(request)
+    scope.require_project(session, project_id)
+    filename = file.filename or ""
+    suffix = Path(filename).suffix.lower()
+    is_pdf = file.content_type in {"application/pdf", "application/x-pdf"} or suffix == ".pdf"
+    is_text = (file.content_type or "").startswith("text/") or suffix == ".txt"
+    if not (is_pdf or is_text):
+        raise ValueError("upload a PDF or text file")
+
+    raw = await file.read(config.MAX_SOURCE_FILE_BYTES + 1)
+    if len(raw) > config.MAX_SOURCE_FILE_BYTES:
+        raise ValueError("file is larger than the 10 MB limit")
+
+    if is_pdf:
+        if not raw.startswith(b"%PDF-"):
+            raise ValueError("the uploaded file is not a valid PDF")
+        try:
+            reader = PdfReader(BytesIO(raw))
+            if reader.is_encrypted:
+                raise ValueError("password-protected PDFs are not supported")
+            if len(reader.pages) > config.MAX_PDF_PAGES:
+                raise ValueError(f"PDF has more than {config.MAX_PDF_PAGES} pages")
+            file_text = "\n\n".join((page.extract_text() or "").strip() for page in reader.pages).strip()
+        except ValueError:
+            raise
+        except Exception as exc:
+            raise ValueError("the PDF could not be read") from exc
+        kind = "pdf"
+    else:
+        try:
+            file_text = raw.decode("utf-8-sig").strip()
+        except UnicodeDecodeError as exc:
+            raise ValueError("text files must use UTF-8 encoding") from exc
+        kind = "text"
+
+    source_text = "\n\n".join(part for part in (text.strip(), file_text) if part)
+    if not source_text:
+        raise ValueError("the file contains no extractable text")
+    source_title = title.strip() or Path(filename).stem.strip() or "Uploaded source"
+    return context.add_source(session, project_id, source_title, source_text, kind)
 
 
 @router.post("/{project_id}/decisions")
