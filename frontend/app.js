@@ -40,6 +40,24 @@ async function busy(btn, label, fn) {
   try { return await fn(); } catch (e) { toast(e.message); } finally { btn.disabled = false; btn.textContent = old; }
 }
 
+let progressStarted = 0;
+let progressTimer = null;
+function progress(message) {
+  if (!progressTimer) {
+    progressStarted = Date.now();
+    progressTimer = setInterval(() => {
+      $('task-time').textContent = `${Math.floor((Date.now()-progressStarted)/1000)}s elapsed · Please wait. The next step opens automatically.`;
+    }, 1000);
+  }
+  $('task-stage').textContent = message;
+  $('task-time').textContent = `${Math.floor((Date.now()-progressStarted)/1000)}s elapsed · Please wait. The next step opens automatically.`;
+  $('task-progress').classList.remove('hidden');
+}
+function stopProgress() { clearInterval(progressTimer); progressTimer = null; $('task-progress').classList.add('hidden'); }
+$('feedback-scope').addEventListener('change', () => {
+  $('scope-help').textContent = {personal:'Only your future requests can use this guidance.',project:'Anyone working on this project can use this guidance.',team:'Anyone on your team can use this guidance across projects.'}[$('feedback-scope').value];
+});
+
 const show = (id, on = true) => $(id).classList.toggle("hidden", !on);
 const chip = (text) => el("span", { class: `chip ${text}` }, String(text).replace(/_/g, " "));
 
@@ -47,6 +65,9 @@ const chip = (text) => el("span", { class: `chip ${text}` }, String(text).replac
 async function init() {
   state.me = await api("/login", { method: "POST", body: { user_id: sessionStorage.getItem("pf-console-user") || DEFAULT_USER_ID } });
   $("session-user").value = state.me.user_id;
+  $('feedback-scope').querySelector('[value="team"]').disabled = !['publisher','admin'].includes(state.me.role);
+  if ($('feedback-scope').selectedOptions[0].disabled) $('feedback-scope').value = 'project';
+  $('feedback-scope').dispatchEvent(new Event('change'));
   const projects = await api("/projects");
   const project = projects.find((p) => p._id === DEFAULT_PROJECT_ID);
   if (!project) throw new Error(`Default project ${DEFAULT_PROJECT_ID} is not available to ${DEFAULT_USER_ID}. Seed the demo data first.`);
@@ -100,10 +121,11 @@ async function submitRequest(clarification = '') {
   const request = clarification && state.run ? state.run.request : $('type-input').value.trim();
   if (!request) throw new Error('Describe what you want built.');
   const answers = clarification ? (state.run?.clarification_text || '') + '\n' + clarification : '';
+  progress('1 of 2 · Writing your prompt using project memory');
   state.run = await api('/build', {method:'POST', body:{project_id:state.projectId, request, clarification:answers}});
-  renderRun(); await loadContext();
+  renderRun();
   history.replaceState(null, '', `#run=${state.run._id}`);
-  await generatePreview();
+  await Promise.all([generatePreview(), loadContext()]);
   $('preview-card').scrollIntoView({behavior:'smooth',block:'start'});
 }
 function tell(text) { busy($('send-btn'), 'Updating…', () => submitRequest(text)); }
@@ -112,7 +134,7 @@ $('send-btn').addEventListener('click', e => busy(e.currentTarget, 'Building…'
   $('request-status').textContent = 'Using project memory to write the prompt and build your preview…';
   try { await submitRequest(); }
   catch (err) { $('request-error').textContent = err.message; show('request-error'); }
-  finally { show('request-status', false); }
+  finally { show('request-status', false); stopProgress(); }
 }));
 $('demo-request').addEventListener('click', () => { $('type-input').value = state.me?.user_id === 'console-bob' ? 'Add search to the orders table.' : 'Add search to the users table. Show sample results for a search for Alex.'; $('type-input').focus(); });
 $('type-input').addEventListener('keydown', e => { if(e.key === 'Enter' && (e.metaKey || e.ctrlKey)) $('send-btn').click(); });
@@ -145,14 +167,17 @@ async function generatePreview() {
   if (!state.run?._id || state.previewing) return;
   if (!$('save-brief-btn').classList.contains('hidden')) throw new Error('Save your edits before generating a preview.');
   state.previewing = true;
+  progress('2 of 2 · Generating your visual preview');
   $('send-btn').disabled = true;
   renderRun();
   try {
     state.run = await api(`/build/${state.run._id}/preview`, { method: 'POST' });
   } catch (err) {
     state.run = await api(`/runs/${state.run._id}`);
-    toast(`Preview could not be generated: ${err.message}`);
+    $('request-error').textContent = `Your prompt is saved, but the preview failed: ${err.message}. Open the prompt below and press Preview website to retry.`; show('request-error');
+    throw err;
   } finally {
+    stopProgress();
     state.previewing = false;
     $('send-btn').disabled = false;
     renderRun();
@@ -395,17 +420,23 @@ $('remember-rebuild').addEventListener('click', e => busy(e.currentTarget, 'Reme
   if (!text) throw new Error('Tell us what to change first.');
   if (state.previewing || $('send-btn').disabled) throw new Error('Wait for the current build to finish.');
   const previous = structuredClone(state.run);
+  const chosenScope = $('feedback-scope').value;
+  let remembered = false;
+  show('feedback-error', false);
+  progress('Saving your guidance to memory');
   $('send-btn').disabled = true; $('session-user').disabled = true;
   try {
     const result = await api(`/runs/${previous._id}/feedback`, {method:'POST',body:{text,lesson:text}});
     if (!result.proposed) throw new Error('No lesson was created. Your current preview is unchanged.');
-    await api(`/lessons/${result.proposed._id}/approve`, {method:'POST',body:{scope:'project',text}});
+    await api(`/lessons/${result.proposed._id}/approve`, {method:'POST',body:{scope:chosenScope,text}});
+    remembered = true;
     state.baseline = previous; sessionStorage.setItem(`pf-before-${state.me.user_id}`, previous._id);
     $('type-input').value = previous.request;
-    toast('Saved to project memory. Rebuilding the same request…');
+    toast('Guidance saved. Rebuilding the same request…');
     await submitRequest();
     if (state.run?.artifact) $('compare-preview').click();
-  } finally { $('send-btn').disabled = false; $('session-user').disabled = false; }
+  } catch (err) { $('feedback-error').textContent = (remembered ? 'Your guidance was saved, but rebuilding failed. ' : '') + err.message; show('feedback-error'); }
+  finally { stopProgress(); $('send-btn').disabled = false; $('session-user').disabled = false; }
 }));
 $('suggest-lesson').addEventListener('click', e => busy(e.currentTarget, 'Preparing lesson…', submitFeedback));
 
