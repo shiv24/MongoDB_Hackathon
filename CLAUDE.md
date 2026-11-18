@@ -6,7 +6,7 @@ Hackathon project for Memory You Can Govern (Toronto, Nov 14, 2026; submissions 
 - Identity and membership come from the session, never from a request body.
 - All reads of lessons, decisions and sources go through `backend/app/repo/` and use a filter from `repo/scope.py`. Every `$vectorSearch` pre-filters on scope.
 - `proposed` lessons never reach a brief. Only `approved` lessons and `current` decisions are retrieved.
-- Runs are private to their creator; derived personal context must not be shared. Every brief instruction cites a revision. Preferences never override requirements, and conflicts go to `open_questions`.
+- Runs are private to their creator; derived personal context must not be shared. Every brief instruction cites a revision. Preferences never override requirements; the direct demo records unresolved choices as explicit assumptions.
 - `memory_events` is append-only. Every approval, correction, scope change, retirement, expiry and forget writes one.
 - Lesson TTL is on `lessons.purge_at`; agent sessions also have an expiry TTL. Expiry is logged by the app sweep first.
 - Stack: MongoDB Atlas, Voyage, ElevenLabs (dictation/live conversation), OpenAI Responses (direct briefs and preview generation), LangSmith. The user authorized the existing OpenAI API budget.
@@ -17,7 +17,7 @@ Hackathon project for Memory You Can Govern (Toronto, Nov 14, 2026; submissions 
 ## Commands
 - Run: `uvicorn app.main:app --reload --app-dir backend` (app at http://localhost:8000)
 - Test: `pytest backend/tests` (offline; the live Atlas tests in `test_isolation.py` run when `.env` is set and fixtures are seeded)
-- Atlas setup: `python scripts/setup_atlas.py`, then `python scripts/seed.py --reset`
+- Atlas setup: `python scripts/setup_atlas.py`, then `python scripts/prepare_demo.py` (additive; do not reset existing data for routine setup)
 - Agent setup: tunnel the app (`cloudflared tunnel --url http://localhost:8000`), set `PUBLIC_BASE_URL`, run `python scripts/setup_elevenlabs_agent.py`
 
 ## Skills

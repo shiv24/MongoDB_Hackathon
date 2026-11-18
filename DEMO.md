@@ -1,6 +1,20 @@
 # One-minute PromptForge demo
 
-Use Alice in the Admin console workspace. The server runs at http://localhost:8018.
+Use Alice in the Admin console workspace. Follow [local setup](README.md#run-locally), then open http://localhost:8000 (or the port you started).
+
+## Portable walkthrough
+
+1. Prepare the template with `python scripts/prepare_demo.py` after Atlas index setup.
+2. Start the server and click **Start fresh demo**. Identify the starting preview as saved; it is copied from a committed fixture without a model call.
+3. Click **Use example feedback**, select **This project**, then **Save feedback & rebuild**. This explicitly approves the text and generates a new brief and preview live.
+4. Compare the action buttons and inspect the cited approved lesson. Same request and model configuration do not guarantee identical layout elsewhere.
+5. Use **Team workspace** to return to normal work, or **Start fresh demo** for another isolated round. Existing data is preserved.
+
+Source embeddings/reranking and live rebuilds need configured providers. Each demo round creates records that remain in Atlas; it does not wipe earlier rounds. Normal workspace requests use Vector Search; the isolated demo reads its copied curated sources directly and reranks them to avoid index lag.
+
+## Historical rehearsal links
+
+The links below refer to records in the original rehearsal database on port 8018. They are not available automatically in a fresh database. Use the portable walkthrough above for a new installation.
 
 [Open the tested, saved comparison (backup)](http://localhost:8018/#run=ccb9a762457f41b39026a2bd53fe632c&before=3134704de537471fb41c6dd666372c45).
 
