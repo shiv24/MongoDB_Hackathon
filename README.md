@@ -8,7 +8,9 @@ Review and export the brief to your coding tool, or run it with a selected model
 
 **Hackathon track:** Memory You Can Govern · MongoDB Agents in Context · Toronto, November 14, 2026.
 
-> **Status:** Hackathon prototype. This README defines the current product direction and intended experience; direct and conversational workflows are implemented; live provider verification is pending. Website generation is a candidate first workflow, and the final demo is still to be chosen. See [implementation and limits](#implementation-and-limits) before running the project.
+> **Status:** Hackathon prototype with an Admin console demo: request → grounded prompt → website preview → approved feedback → before/after comparison. The recorded rehearsal used Atlas, Voyage, and OpenAI; optional voice integrations still need separate live verification. See [run locally](#run-locally), [the demo guide](DEMO.md), and [implementation and limits](#implementation-and-limits).
+
+Documentation: [technical design](docs/DESIGN.md) · [frontend guide](docs/FRONTEND.md) · [demo walkthrough](DEMO.md) · [video production](video/README.md).
 
 ## The problem
 
@@ -30,7 +32,7 @@ For example:
 
 The intended experience:
 
-1. **Understand the request.** Resolve the project, document, and requested feature. If two documents or features fit, ask one focused question.
+1. **Understand the request.** Use the selected workspace and requested feature. The direct demo records explicit assumptions rather than blocking generation on questions.
 2. **Find the context.** Retrieve the relevant spec, current decisions, applicable code references, and approved preferences within the caller's access.
 3. **Build the brief.** Explain the objective, requirements, constraints, dependencies, and acceptance checks. Cite sources and surface unresolved questions.
 4. **Let the user inspect it.** Show which decisions and preferences shaped the brief. The user can edit it, export it, or send it to a configured model.
@@ -39,7 +41,7 @@ The intended experience:
 
 The goal is a useful first result with fewer repeated corrections. Prompt length, token savings, and first-attempt success are measurements to evaluate, not guarantees.
 
-An illustrative brief for that signup request might carry three distinct instructions: use the identity service named in the approved architecture decision, include the fields required by the current signup spec, and follow the project's approved button-label preference. Each instruction points back to its source. If the spec leaves a required field undefined, the brief surfaces that question before generation.
+An illustrative brief for that signup request might carry three distinct instructions: use the identity service named in the approved architecture decision, include the fields required by the current signup spec, and follow the project's approved button-label preference. Each instruction points back to its source. If the spec leaves a field undefined, the direct demo records an assumption for the user to inspect.
 
 ## What goes into a brief
 
@@ -110,12 +112,12 @@ References: [Atlas Vector Search filtering](https://www.mongodb.com/docs/vector-
 The main screen is a place to delegate work and review the result.
 
 - **Project setup:** Supply a spec, relevant repository snapshot, and explicit decisions; review their source, owner, and scope. These establish the starting context before the first request.
-- **Request:** Choose a project, speak or type a request, and review the transcript.
+- **Request:** Open the Admin console workspace as Alice or Bob, type a request or dictate it with **Record request**, then click **Build preview**.
 - **Context:** Inspect the selected sources, decisions, and preferences, with their attribution and scope.
-- **Sources:** Add text, PDF, or UTF-8 text files with Company, Project, or User (Personal) visibility. The Admin console demo uses Alice (publisher) and Bob (member); members can publish personal sources, publishers can also publish project sources, and admins can publish at all three levels.
+- **Sources:** Add text, PDF, or UTF-8 text files with Whole team, This project, or Just me visibility. The Admin console demo uses Alice (publisher) and Bob (member); members can publish personal sources, publishers can also publish project sources, and admins can publish at all three levels.
 - **Brief:** PromptForge uses explicit assumptions instead of blocking questions; review the collapsible prompt if desired.
 - **Result:** Inspect the generated artifact and validation evidence. A failed or unrun check remains visible.
-- **Feedback:** Explain a correction and decide whether the proposed lesson should be remembered.
+- **Feedback:** Choose a scope and explicitly save your wording with **Save feedback & rebuild**, or use the suggestion flow to review an AI-proposed lesson before approval.
 
 The brief should remain usable without an execution integration. Running it inside PromptForge is a second path through the same context and review flow.
 
@@ -142,7 +144,7 @@ The full product includes model selection; the first complete workflow only need
 
 ## How we will prove it works
 
-The demo should establish a visible connection between a memory change and a result. Its exact task is still to be chosen.
+The demo adds search to an Admin console users table, then approves a project lesson to use purple action buttons with white text. It compares a saved starting preview with a newly generated result. See [DEMO.md](DEMO.md) for the repeatable walkthrough and recorded rehearsal evidence.
 
 1. Run a fixed request and show the sources and memories used.
 2. Approve a specific lesson or correct a team decision in a separate session.
@@ -156,7 +158,7 @@ We will report requirement satisfaction, retained constraints, user corrections,
 
 ## Run locally
 
-Python 3.10+ is required. From the repository root:
+Python 3.10+ is required; Python 3.12 is a suitable local choice. Check `python3 --version` first, or substitute an installed newer interpreter in the command below. Node.js is only needed for frontend checks and video production. From the repository root:
 
 ```bash
 python3 -m venv .venv
@@ -177,9 +179,15 @@ python scripts/prepare_demo.py
 uvicorn app.main:app --reload --app-dir backend
 ```
 
-The showcase seed is additive and safe to rerun; it creates the Admin console sources and decisions without pre-approving lessons.
+`init_env.py` preserves an existing `.env`; on first creation it generates local session secrets. Keep provider credentials in that ignored file.
 
-Open http://localhost:8000, type a request, and click **Build preview**. PromptForge chooses reasonable defaults, shows the artifact first, and keeps the grounded prompt collapsible. Record outcomes and approve suggested lessons explicitly.
+`prepare_demo.py` is additive: it seeds the Admin console sources and decisions, then loads a committed, lesson-free starting preview into a reusable template. It reuses an existing prepared template. Preparation may call Voyage to embed sources; it does not generate the starting preview live.
+
+Open http://localhost:8000. The app signs into the simulated Alice session in the Admin console workspace. Click **Use an example request**, then **Build preview** for live generation, or **Start fresh demo** for an isolated round beginning with a clearly labeled saved preview. **Team workspace** returns to the shared workspace.
+
+PromptForge shows the artifact first and keeps the grounded prompt collapsible. To demonstrate memory, click **Use example feedback**, choose **This project**, then **Save feedback & rebuild**. This action approves your exact wording and rebuilds the same request; it is not feedback-only. Inspect the cited lesson and before/after comparison.
+
+If port 8000 is occupied, start with `uvicorn app.main:app --reload --app-dir backend --port 8001` and open http://localhost:8001. The API documentation is available at `/docs`. Open the UI through FastAPI rather than opening `frontend/index.html` as a local file.
 
 `doctor --live` tests connectivity and model access; its Voyage embedding probe consumes a small number of tokens. It does not prove the full workflow. Setup must finish with all three vector indexes READY. Allow time for freshly seeded data to be indexed. Atlas also needs your client IP allowed and a database user with appropriate permissions.
 
@@ -199,7 +207,7 @@ Put the HTTPS URL in `PUBLIC_BASE_URL`, then run:
 python scripts/setup_elevenlabs_agent.py
 ```
 
-Put the printed ID in `ELEVENLABS_AGENT_ID` and restart the app. Click **Live voice conversation**. The agent retrieves context and saves briefs through scoped webhook tools. It can propose a lesson; the user must click **review proposal → Approve lesson** in the app. It cannot approve via its webhook.
+Put the printed ID in `ELEVENLABS_AGENT_ID` and restart the app. The conversational backend exposes agent sessions and scoped webhook tools, but the current main screen only exposes microphone dictation through **Record request**; it has no live-conversation start button. A separate client integration is required to exercise the agent session flow. Agent tools may propose lessons but cannot approve them.
 
 Keep the tunnel running. If the URL changes, rerun setup (it creates new agent/tools) and update the ID. ElevenLabs agent/model usage has its own billing; verify event-coupon coverage in your account. No free-generation guarantee is made.
 
@@ -212,30 +220,43 @@ Keep the tunnel running. If the URL changes, rerun setup (it creates new agent/t
 - OpenAI returns typed structured output. Requests have bounded output/context, timeouts, and no automatic OpenAI retries. Preview generation is locked per run, cached per brief revision, and rechecks memory after generation.
 - Website output is a self-contained HTML/CSS/JavaScript prototype. Inline interactions run in an isolated iframe; external assets, network calls, and form submission are blocked. Backend features are not implemented by this preview, and generated behavior should be reviewed before relying on it.
 - Checks are user-reported. There is no claim of automatic functional correctness or complete erasure of previously exported content.
-- The demo login picker is simulated identity, not production authentication. Use synthetic demo data; replace demo login before real-team/public production use.
+- The Alice/Bob session selector is simulated identity, not production authentication. Use synthetic demo data; replace demo login before real-team/public production use.
 - LangSmith tracing is optional. OpenAI usage is stored with model results; dollar spend depends on your configured models. Set provider-side spending limits for your budget.
 
 ## Verification
 
 ```bash
 # Explicitly disable live credentials for the offline suite:
-MONGODB_URI='' VOYAGE_API_KEY='' LANGSMITH_TRACING=false pytest backend/tests -q
+MONGODB_URI='' VOYAGE_API_KEY='' OPENAI_API_KEY='' ELEVENLABS_API_KEY='' LANGSMITH_TRACING=false pytest backend/tests -q
 node --check frontend/app.js
 # After configuring and seeding the sandbox:
 pytest backend/tests/test_isolation.py -q
 ```
 
-Current offline result: **53 backend tests passed, 3 live Atlas tests skipped; 4 frontend sandbox tests passed**. Run the frontend tests with `node --test frontend/tests/preview.test.mjs`. A headless browser confirmed Alice sees the three source visibility choices; perform the full manual workflow below after setup.
+Run frontend sandbox tests with `node --test frontend/tests/preview.test.mjs`. Offline checks use mocked providers and do not establish live service availability. Source visibility choices depend on the role: Alice is a publisher, Bob is a member, and only an admin can add a whole-team source.
 
 Offline tests cover API flow, scopes, lifecycle, private runs, stale/expired memory, explicit approval boundaries, direct generation with mocked providers, preview caching and sanitization. Live provider calls and real browser microphone/agent behavior still require credentials and a live smoke test.
 
 ## Demo acceptance
 
-1. Alice requests a signup page, answers the missing company-size question, and inspects source citations.
-2. Export or generate a preview and record what actually meets the checks.
-3. Propose and approve a project lesson; Bob's fresh request includes it. Alice's personal lessons stay private.
-4. Correct a decision; the old brief is blocked until refreshed.
-5. Switch to Orbit and verify its context stays isolated.
+1. Run **Start fresh demo** after preparation and identify the starting preview as saved.
+2. Use example feedback, choose **This project**, and click **Save feedback & rebuild**.
+3. Inspect the approved lesson citation and the purple action buttons in the generated comparison.
+4. Return to **Team workspace** to test Alice/Bob sharing with a relevant fresh request; each user's runs and personal lessons remain private.
+5. Exercise decision changes, expiry, and cross-team isolation through the API/integration tests; those checks are not all exposed as controls in the current UI.
+
+## Repository layout
+
+| Path | Purpose |
+| --- | --- |
+| `frontend/` | HTML/CSS/JavaScript UI served by FastAPI; no frontend build step |
+| `backend/app/routes/` | Session, project, build, feedback, lesson, demo, and voice APIs under `/api` |
+| `backend/app/agent/` | Retrieval, embeddings/reranking, structured briefs, generation, and citation rechecks |
+| `backend/app/repo/` | Scoped database access, run history, memory lifecycle, and demo preparation |
+| `backend/tests/` | Mocked offline tests and opt-in Atlas integration tests |
+| `scripts/` | Local configuration, provider checks, Atlas setup, and sample data preparation |
+| `docs/` | Technical and frontend guides; older scenario notes and archived designs |
+| `video/` | Revideo scenes, recorded narration, and prepared screenshots |
 
 ## License
 

@@ -33,12 +33,11 @@ ELEVENLABS_VOICE_ID=optional_voice_id
 ## Make the video
 
 ```bash
-node scripts/capture.mjs http://localhost:8000   # optional: re-capture UI screenshots → public/shots/
 npm run voice    # ElevenLabs narration → public/vo/<scene>.mp3 and clip lengths in src/vo.json
 npm run render   # write out/promptforge-demo.mp4 (1920×1080, with voice)
 ```
 
-`capture.mjs` drives the running app through the judge showcase (Alice creates a prompt, approves a lesson for the project; Bob gets it in a fresh session) and screenshots each step. It needs a server that can create briefs (OpenAI key set). The committed screenshots were captured from the offline preview with vector search stubbed, so retrieval in those shots is not Atlas-ranked.
+`scripts/capture.mjs` is a legacy capture helper, not a working quickstart for the current UI. It targets older selectors (`#lesson-example`, `#feedback-down`), uses the old `pf-demo-user` session key, and imports Puppeteer, which is not a declared video dependency. Update it and provide its browser dependency before attempting a fresh capture; no offline preview server is currently included. The render command uses the committed screenshots. Those screenshots were captured with vector search stubbed, so they do not demonstrate Atlas-ranked retrieval. For a current live walkthrough, follow [DEMO.md](../DEMO.md).
 
 To preview and scrub the timeline in the browser while you edit: `npm run editor`. `npm run typecheck` checks the TypeScript without rendering.
 
